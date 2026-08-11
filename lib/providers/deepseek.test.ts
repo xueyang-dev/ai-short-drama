@@ -499,9 +499,8 @@ describe('DeepSeek provider', () => {
           content: JSON.stringify({
             shots: [{
               shotOrder: 1,
-              prompt: '林夏压低声音说出台词。',
+              prompt: '素材引用与主体定义:\n- 将 @林夏-默认造型 定义为主角「林夏」\n- 将 @旧仓库_夜晚 定义为场景「旧仓库_夜晚」\n\n分镜提示词:\n林夏压低声音说出台词。',
               duration: 6,
-              referenceEntityNames: ['林夏 / 默认造型', '旧仓库_夜晚'],
             }],
           }),
         },
@@ -537,7 +536,8 @@ describe('DeepSeek provider', () => {
       messages: Array<{ content: string }>
     }
     const userPrompt = requestBody.messages[1]?.content ?? ''
-    expect(userPrompt).toContain('林夏 / 默认造型')
+    expect(userPrompt).toContain('@林夏-默认造型')
+    expect(userPrompt).toContain('@旧仓库_夜晚')
     expect(userPrompt).toContain('音色描述：青年女声，音调中低，冷静清晰')
     expect(userPrompt).not.toContain('音频参考')
   })

@@ -145,6 +145,5 @@ export interface GeneratedStoryboard {
     shotOrder: number
     prompt: string
     duration: number
-    referenceEntityNames: string[]
   }>
 }

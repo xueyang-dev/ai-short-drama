@@ -1,9 +1,10 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Clapperboard, Loader2, Plus, Save, Sparkles, Trash2, Video } from 'lucide-react'
+import { Clapperboard, Clock3, Loader2, Plus, Save, Sparkles, Trash2, Video } from 'lucide-react'
 import { toast } from 'sonner'
 import { confirmToast } from '@/components/confirm-toast'
+import { useTimer } from '@/lib/hooks/use-timer'
 import { SEEDANCE_MODELS } from '@/lib/model-config'
 import type { Entity, ProjectBundle, Shot } from '@/lib/types'
 import { requestJson } from './client'
@@ -12,6 +13,14 @@ interface Props {
   bundle: ProjectBundle
   refresh: (quiet?: boolean) => Promise<void>
 }
+
+const SPLIT_FEEDBACK_STAGES = [
+  { startsAt: 0, title: '正在核对剧本与创作素材', detail: '识别本集角色、空镜场景、道具、音色和视觉风格。' },
+  { startsAt: 25, title: '正在拆分剧情节拍与时长', detail: '按场景、对白、动作和情绪转折规划连续视频片段。' },
+  { startsAt: 70, title: '正在规划镜头衔接与素材引用', detail: '匹配每个镜头出场的角色形象、场景和道具参考图。' },
+  { startsAt: 130, title: '正在编写 Seedance 视频提示词', detail: '组织景别、运镜、动作、对白、声音和画面风格。' },
+  { startsAt: 220, title: '正在检查完整性并组装结果', detail: '核对剧情覆盖、片段时长、素材引用和输出结构。' },
+] as const
 
 export function StoryboardStep({ bundle, refresh }: Props) {
   const confirmedEpisodes = useMemo(() => bundle.episodes.filter(episode => episode.status === 'confirmed'), [bundle.episodes])
@@ -23,6 +32,7 @@ export function StoryboardStep({ bundle, refresh }: Props) {
   const [batching, setBatching] = useState(false)
   const [selectedShotIds, setSelectedShotIds] = useState<Set<string>>(() => new Set())
   const [dirtyShotIds, setDirtyShotIds] = useState<Set<string>>(() => new Set())
+  const { elapsed: splitElapsed, formatted: splitElapsedTime } = useTimer(splitting)
 
   useEffect(() => {
     if (!confirmedEpisodes.some(episode => episode.id === episodeId)) setEpisodeId(confirmedEpisodes[0]?.id ?? '')
@@ -39,6 +49,11 @@ export function StoryboardStep({ bundle, refresh }: Props) {
   const episodeHasGenerating = shots.some(shot => shot.status === 'generating')
   const workflowBusy = splitting || batching
   const generatingIds = bundle.shots.filter(shot => shot.status === 'generating').map(shot => shot.id).join(',')
+  const splitStageIndex = SPLIT_FEEDBACK_STAGES.reduce(
+    (current, stage, index) => splitElapsed >= stage.startsAt ? index : current,
+    0,
+  )
+  const splitStage = SPLIT_FEEDBACK_STAGES[splitStageIndex]
 
   useEffect(() => {
     const currentIds = new Set(shots.map(shot => shot.id))
@@ -138,40 +153,64 @@ export function StoryboardStep({ bundle, refresh }: Props) {
       tone: 'warning',
     })) return
     setBatching(true)
-    let succeeded = 0
-    for (let index = 0; index < pending.length; index += 2) {
-      const group = pending.slice(index, index + 2)
-      const results = await Promise.allSettled(group.map(shot => generateVideo(shot.id, true)))
-      succeeded += results.filter(result => result.status === 'fulfilled').length
+    try {
+      let succeeded = 0
+      for (let index = 0; index < pending.length; index += 2) {
+        const group = pending.slice(index, index + 2)
+        const results = await Promise.allSettled(group.map(shot => generateVideo(shot.id, true)))
+        succeeded += results.filter(result => result.status === 'fulfilled').length
+      }
+      await refresh(true)
+      if (succeeded === pending.length) toast.success(`已提交 ${succeeded}/${pending.length} 个视频任务`)
+      else toast.error(`批量提交完成：${succeeded} 成功，${pending.length - succeeded} 失败`)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '刷新分镜状态失败')
+    } finally {
+      setBatching(false)
     }
-    setBatching(false)
-    await refresh(true)
-    toast.success(`已提交 ${succeeded}/${pending.length} 个视频任务`)
   }
 
   return (
     <div className="mx-auto max-w-[1500px] space-y-5">
       <section className="panel p-5 md:p-6">
-        <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
-          <div>
+        <div className="grid gap-5 min-[1500px]:grid-cols-[480px_minmax(0,1fr)] min-[1500px]:items-end">
+          <div className="min-w-0">
             <div className="label">Shot planning & generation</div>
             <h3 className="display-type text-2xl font-semibold">分镜导演台</h3>
             <p className="mt-1 text-sm text-[var(--muted)]">DeepSeek 加载 drama-shot-prompt Skill 拆镜，Seedance 2.0 使用选定角色、场景和道具的本地图片 Base64 作为参考。</p>
           </div>
-          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-[180px_230px_120px_auto_auto]">
+          <div className="grid min-w-0 gap-2 sm:grid-cols-2 md:grid-cols-3 min-[1500px]:grid-cols-[minmax(0,1.1fr)_minmax(0,1.3fr)_minmax(88px,.55fr)_auto_auto]">
             <label><span className="label">已定稿分集</span><select className="field" value={episodeId} disabled={workflowBusy} onChange={e => { setEpisodeId(e.target.value); setSelectedShotIds(new Set()) }}>{confirmedEpisodes.map(item => <option key={item.id} value={item.id}>第{item.episodeNumber}集 · {item.title}</option>)}</select></label>
             <label><span className="label">视频模型</span><select className="field" value={model} disabled={workflowBusy} onChange={e => setModel(e.target.value)}>{SEEDANCE_MODELS.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
             <label><span className="label">分辨率</span><select className="field" value={resolution} disabled={workflowBusy} onChange={e => setResolution(e.target.value)}>{selectedModel.resolutions.map(value => <option key={value} value={value}>{value}</option>)}</select></label>
-            <button className="btn-secondary self-end" disabled={!episode || workflowBusy || episodeHasGenerating} onClick={() => void split()}>{splitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}{shots.length ? '重新拆分' : 'AI 拆分'}</button>
-            <button className="btn-primary self-end" disabled={!selectedShotIds.size || workflowBusy} onClick={() => void batchGenerate()}>{batching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Video className="h-4 w-4" />}批量生成{selectedShotIds.size ? ` (${selectedShotIds.size})` : ''}</button>
+            <button className="btn-secondary self-end whitespace-nowrap" disabled={!episode || workflowBusy || episodeHasGenerating} onClick={() => void split()}>{splitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}{splitting ? `拆分中 ${splitElapsedTime}` : shots.length ? '重新拆分' : 'AI 拆分'}</button>
+            <button className="btn-primary self-end whitespace-nowrap md:col-span-2 min-[1500px]:col-span-1" disabled={!selectedShotIds.size || workflowBusy} onClick={() => void batchGenerate()}>{batching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Video className="h-4 w-4" />}批量生成{selectedShotIds.size ? ` (${selectedShotIds.size})` : ''}</button>
           </div>
         </div>
+        {splitting && (
+          <div className="mt-5 rounded-xl border border-[var(--projector)]/30 bg-[var(--projector)]/[.08] p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="flex min-w-0 items-start gap-3" role="status">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--projector)]/15"><Loader2 className="h-4 w-4 animate-spin text-[var(--projector)]" /></span>
+                <div className="min-w-0">
+                  <div className="timecode text-[10px] text-[var(--muted)]">AI 分镜导演 · 阶段 {splitStageIndex + 1}/{SPLIT_FEEDBACK_STAGES.length}</div>
+                  <strong className="mt-1 block text-sm">{splitStage.title}</strong>
+                  <p className="mt-1 text-xs leading-5 text-[var(--muted)]">{splitStage.detail} 剧本越长，等待时间越久，完成后会自动载入结果。</p>
+                </div>
+              </div>
+              <span className="timecode flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--line)] bg-white/70 px-3 py-2 text-xs text-[var(--ink)]" aria-hidden="true"><Clock3 className="h-3.5 w-3.5 text-[var(--projector)]" />已用时 {splitElapsedTime}</span>
+            </div>
+            <div className="mt-4 grid grid-cols-5 gap-1.5" aria-hidden="true">
+              {SPLIT_FEEDBACK_STAGES.map((stage, index) => <span key={stage.title} className={`h-1.5 rounded-full ${index <= splitStageIndex ? 'bg-[var(--projector)]' : 'bg-[var(--line)]'}`} />)}
+            </div>
+          </div>
+        )}
       </section>
 
       {!episode ? (
         <div className="panel py-24 text-center text-sm text-[var(--muted)]">请先在剧本步骤创建并定稿分集。</div>
       ) : shots.length === 0 ? (
-        <div className="panel flex flex-col items-center border-dashed py-24 text-center"><Clapperboard className="mb-4 h-10 w-10 text-[var(--projector)]" /><strong className="text-lg">本集还没有分镜</strong><p className="mt-2 text-sm text-[var(--muted)]">确认剧本和素材后，让 DeepSeek 拆成可生成的视频镜头。</p><button className="btn-primary mt-5" disabled={workflowBusy} onClick={() => void split()}><Sparkles className="h-4 w-4" /> AI 拆分本集</button></div>
+        <div className="panel flex flex-col items-center border-dashed py-24 text-center"><Clapperboard className="mb-4 h-10 w-10 text-[var(--projector)]" /><strong className="text-lg">本集还没有分镜</strong><p className="mt-2 text-sm text-[var(--muted)]">确认剧本和素材后，让 DeepSeek 拆成可生成的视频镜头。</p><button className="btn-primary mt-5" disabled={workflowBusy} onClick={() => void split()}>{splitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}{splitting ? `拆分中 · ${splitElapsedTime}` : 'AI 拆分本集'}</button></div>
       ) : (
         <div className="space-y-4">
           <div className="panel-muted flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-xs text-[var(--muted)]">
@@ -298,7 +337,7 @@ function ShotCard({ shot, entities, selected, locked, onToggleSelected, onDirtyC
             <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${statusStyle}`}>{shot.status === 'success' ? '已完成' : shot.status === 'generating' ? '生成中' : shot.status === 'failed' ? '失败' : '待生成'}</span>
             <label className="ml-auto flex items-center gap-2 text-xs text-[var(--muted)]">时长 <input type="number" min={4} max={15} className="field !w-20 !py-1.5" value={duration} disabled={editLocked} onChange={e => setDuration(Math.max(4, Math.min(15, Number(e.target.value) || 4)))} /> 秒</label>
           </div>
-          <label className="mt-4 block"><span className="label">Seedance 提示词</span><textarea className="field min-h-36 resize-y leading-6" value={prompt} disabled={editLocked} onChange={e => setPrompt(e.target.value)} placeholder="主体、动作、台词、景别、运镜、光线与声音…" /></label>
+          <label className="mt-4 block"><span className="label">Seedance 提示词</span><textarea className="field min-h-[27rem] resize-y leading-6" value={prompt} disabled={editLocked} onChange={e => setPrompt(e.target.value)} placeholder="主体、动作、台词、景别、运镜、光线与声音…" /></label>
           <div className="mt-4">
             <div className="label">Base64 参考素材 · 最多 9 张</div>
             <div className="flex flex-wrap gap-2">

@@ -6,7 +6,8 @@ import {
   DEEPSEEK_MAX_OUTPUT_TOKENS,
   MAX_SCRIPT_EPISODES_PER_REQUEST,
 } from '../model-config'
-import type { GeneratedScript, GeneratedStoryboard } from '../types'
+import type { EntityKind, GeneratedScript, GeneratedStoryboard } from '../types'
+import { getStoryboardReferenceTag } from '../storyboard-references'
 import { loadSkillPrompt } from '../skills'
 
 const generatedScriptSchema = z.object({
@@ -59,7 +60,6 @@ const generatedStoryboardSchema = z.object({
     dialogue: z.string().default(''),
     prompt: z.string().min(1),
     duration: z.number().int().min(4).max(15),
-    referenceEntityNames: z.array(z.string()).default([]),
   })).min(1),
 })
 
@@ -765,8 +765,9 @@ export async function generateStoryboard(input: {
   entities: Array<{
     name: string
     variant: string
-    kind: string
+    kind: EntityKind
     description: string
+    role?: string
     voiceDescription?: string
   }>
 }): Promise<GeneratedStoryboard> {
@@ -776,9 +777,11 @@ export async function generateStoryboard(input: {
   const entityText = input.entities.map(entity => {
     const voiceDescription = entity.kind === 'character' ? entity.voiceDescription?.trim() : ''
     const voiceText = voiceDescription ? `；音色描述：${voiceDescription}` : ''
-    return `- [${entity.kind}] ${entity.name}${entity.variant ? ` / ${entity.variant}` : ''}：${entity.description}${voiceText}`
+    const tag = getStoryboardReferenceTag(entity)
+    const roleText = entity.kind === 'character' && entity.role ? `；角色定位：${entity.role}` : ''
+    return `- [${entity.kind}] 可用标签 ${tag}；纯文本名称「${entity.name}」${entity.variant ? `；形象「${entity.variant}」` : ''}${roleText}；描述：${entity.description}${voiceText}`
   }).join('\n')
-  const userPrompt = `请使用本 Skill 拆分以下单集剧本。referenceEntityNames 只能逐字使用“可用资产”清单中的名称；角色造型使用“角色名 / 造型名”。输出严格遵循 Skill 的 JSON 契约。
+  const userPrompt = `请使用本 Skill 拆分以下单集剧本。素材引用必须逐字使用“可用素材”清单提供的 @标签，并且每个标签只在“素材引用与主体定义”段出现一次；后续分镜用纯文本名称指代。输出严格遵循 Skill 的 JSON 契约。
 
 第 ${input.episodeNumber} 集：${input.episodeTitle}
 画面比例：${input.ratio}
@@ -797,7 +800,6 @@ ${input.episodeContent}`
         shotOrder: index + 1,
         prompt: shot.prompt,
         duration: shot.duration,
-        referenceEntityNames: shot.referenceEntityNames,
       })),
   }
 }

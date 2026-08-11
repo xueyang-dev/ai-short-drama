@@ -70,7 +70,11 @@ describe('POST /api/projects/[projectId]/storyboard', () => {
   it('只把当前集适用素材交给分镜 Skill 并解析引用', async () => {
     mocks.getProjectBundle.mockReturnValue(bundle('confirmed'))
     mocks.generateStoryboard.mockResolvedValue({
-      shots: [{ shotOrder: 1, prompt: '林夏冲入雨幕', duration: 5, referenceEntityNames: ['林夏/默认造型'] }],
+      shots: [{
+        shotOrder: 1,
+        prompt: '素材引用与主体定义:\n- 将 @林夏-默认造型 定义为主角「林夏」\n\n分镜提示词:\n林夏冲入雨幕',
+        duration: 5,
+      }],
     })
     mocks.replaceStoryboard.mockReturnValue([])
 

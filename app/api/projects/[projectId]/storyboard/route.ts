@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { createShot, getProjectBundle, replaceStoryboard } from '@/lib/db'
 import { generateStoryboard } from '@/lib/providers/deepseek'
+import { resolveStoryboardReferenceEntities } from '@/lib/storyboard-references'
 import { fail, ok } from '@/lib/api'
 
 export const maxDuration = 600
@@ -9,10 +10,6 @@ const schema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('generate'), episodeId: z.string().uuid() }),
   z.object({ action: z.literal('add'), episodeId: z.string().uuid() }),
 ])
-
-function normalizeName(value: string): string {
-  return value.trim().toLocaleLowerCase('zh-CN').replace(/\s*[/／]\s*/g, '/')
-}
 
 export async function POST(request: Request, { params }: { params: Promise<{ projectId: string }> }) {
   try {
@@ -43,26 +40,24 @@ export async function POST(request: Request, { params }: { params: Promise<{ pro
         variant: entity.variant,
         kind: entity.kind,
         description: entity.description,
+        role: entity.kind === 'character' && typeof entity.metadata.role === 'string'
+          ? entity.metadata.role.trim()
+          : '',
         voiceDescription: entity.kind === 'character' && typeof entity.metadata.voiceDescription === 'string'
           ? entity.metadata.voiceDescription.trim()
           : '',
       })),
     })
-    const entityByName = new Map<string, string>()
-    episodeEntities.forEach(entity => {
-      entityByName.set(normalizeName(entity.name), entity.id)
-      entityByName.set(normalizeName(`${entity.name}/${entity.variant}`), entity.id)
+    const shots = generated.shots.map((shot, index) => {
+      const references = resolveStoryboardReferenceEntities(shot.prompt, episodeEntities)
+      if (references.length > 9) throw new Error(`分镜 ${index + 1} 引用了 ${references.length} 张图片，Seedance 最多支持 9 张`)
+      return {
+        shotOrder: index + 1,
+        prompt: shot.prompt,
+        duration: shot.duration,
+        referenceEntityIds: references.map(entity => entity.id),
+      }
     })
-    const shots = generated.shots.map((shot, index) => ({
-      shotOrder: index + 1,
-      prompt: shot.prompt,
-      duration: shot.duration,
-      referenceEntityIds: Array.from(new Set(
-        shot.referenceEntityNames
-          .map(name => entityByName.get(normalizeName(name)))
-          .filter((id): id is string => Boolean(id)),
-      )),
-    }))
     return ok(replaceStoryboard(projectId, episode.id, shots))
   } catch (error) {
     const status = error instanceof z.ZodError

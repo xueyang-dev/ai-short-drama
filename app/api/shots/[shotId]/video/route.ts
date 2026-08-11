@@ -10,6 +10,11 @@ import {
 import { fileToDataUrl, saveRemoteFile } from '@/lib/local-media'
 import { createSeedanceTask, querySeedanceTask, type SeedanceContent } from '@/lib/providers/seedance'
 import { SEEDANCE_MODELS } from '@/lib/model-config'
+import {
+  bindStoryboardReferencesForSeedance,
+  getStoryboardReferenceTag,
+  resolveStoryboardReferenceEntities,
+} from '@/lib/storyboard-references'
 import { fail, ok } from '@/lib/api'
 
 export const maxDuration = 600
@@ -42,22 +47,25 @@ export async function POST(request: Request, { params }: { params: Promise<{ sho
       ? body.resolution
       : '720p'
 
-    const references = shot.referenceEntityIds
+    const selectedReferences = shot.referenceEntityIds
       .map(id => bundle.entities.find(entity => entity.id === id))
-      .filter(entity => entity?.selectedImage?.path)
-      .slice(0, 9)
-    const referenceGuide = references.length
-      ? `参考图绑定（图片按以下顺序随请求提供）：\n${references.map((entity, index) => {
-          const kind = entity!.kind === 'character' ? '角色' : entity!.kind === 'scene' ? '场景' : '道具'
-          const name = entity!.variant ? `${entity!.name} / ${entity!.variant}` : entity!.name
-          return `- 参考图${index + 1}：${kind}「${name}」`
-        }).join('\n')}\n请在下述分镜中按名称使用对应参考图，保持其视觉特征一致。\n\n`
-      : ''
-    const content: SeedanceContent[] = [{ type: 'text', text: `${referenceGuide}${shot.prompt}` }]
-    for (const entity of references) {
+      .filter((entity): entity is NonNullable<typeof entity> => Boolean(entity))
+    const missingImages = selectedReferences.filter(entity => !entity.selectedImage?.path)
+    if (missingImages.length) {
+      return fail(`请先为参考素材生成并选定图片：${missingImages.map(entity => entity.variant ? `${entity.name} / ${entity.variant}` : entity.name).join('、')}`, 400)
+    }
+    const promptReferences = resolveStoryboardReferenceEntities(shot.prompt, bundle.entities)
+    const selectedIds = new Set(selectedReferences.map(entity => entity.id))
+    const unselectedTags = promptReferences.filter(entity => !selectedIds.has(entity.id))
+    if (unselectedTags.length) {
+      return fail(`提示词引用了未选中的素材：${unselectedTags.map(getStoryboardReferenceTag).join('、')}`, 400)
+    }
+    const prompt = bindStoryboardReferencesForSeedance(shot.prompt, selectedReferences)
+    const content: SeedanceContent[] = [{ type: 'text', text: prompt }]
+    for (const entity of selectedReferences) {
       content.push({
         type: 'image_url',
-        image_url: { url: await fileToDataUrl(entity!.selectedImage!.path) },
+        image_url: { url: await fileToDataUrl(entity.selectedImage!.path) },
         role: 'reference_image',
       })
     }
