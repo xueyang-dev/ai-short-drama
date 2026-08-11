@@ -218,7 +218,7 @@ export function StoryboardStep({ bundle, refresh }: Props) {
             <button className="btn-secondary !min-h-8 !py-1.5" disabled={workflowBusy} onClick={() => setSelectedShotIds(current => current.size === shots.length ? new Set() : new Set(shots.map(shot => shot.id)))}>{selectedShotIds.size === shots.length ? '清空选择' : '全选本集'}</button>
           </div>
           {shots.map(shot => (
-            <ShotCard key={shot.id + shot.updatedAt} shot={shot} entities={availableEntities} selected={selectedShotIds.has(shot.id)} locked={workflowBusy} onToggleSelected={() => setSelectedShotIds(current => { const next = new Set(current); if (next.has(shot.id)) next.delete(shot.id); else next.add(shot.id); return next })} onDirtyChange={handleDirtyChange} refresh={refresh} onGenerate={generateVideo} />
+            <ShotCard key={shot.id + shot.updatedAt} shot={shot} entities={availableEntities} ratio={bundle.project.ratio} selected={selectedShotIds.has(shot.id)} locked={workflowBusy} onToggleSelected={() => setSelectedShotIds(current => { const next = new Set(current); if (next.has(shot.id)) next.delete(shot.id); else next.add(shot.id); return next })} onDirtyChange={handleDirtyChange} refresh={refresh} onGenerate={generateVideo} />
           ))}
           <button className="panel flex w-full items-center justify-center border-dashed py-5 text-sm font-semibold text-[var(--muted)] hover:border-[var(--projector)] hover:text-[var(--ink)]" disabled={workflowBusy} onClick={() => void add()}><Plus className="mr-2 h-4 w-4" /> 手动追加镜头</button>
         </div>
@@ -227,9 +227,10 @@ export function StoryboardStep({ bundle, refresh }: Props) {
   )
 }
 
-function ShotCard({ shot, entities, selected, locked, onToggleSelected, onDirtyChange, refresh, onGenerate }: {
+function ShotCard({ shot, entities, ratio, selected, locked, onToggleSelected, onDirtyChange, refresh, onGenerate }: {
   shot: Shot
   entities: Entity[]
+  ratio: string
   selected: boolean
   locked: boolean
   onToggleSelected: () => void
@@ -337,7 +338,7 @@ function ShotCard({ shot, entities, selected, locked, onToggleSelected, onDirtyC
             <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${statusStyle}`}>{shot.status === 'success' ? '已完成' : shot.status === 'generating' ? '生成中' : shot.status === 'failed' ? '失败' : '待生成'}</span>
             <label className="ml-auto flex items-center gap-2 text-xs text-[var(--muted)]">时长 <input type="number" min={4} max={15} className="field !w-20 !py-1.5" value={duration} disabled={editLocked} onChange={e => setDuration(Math.max(4, Math.min(15, Number(e.target.value) || 4)))} /> 秒</label>
           </div>
-          <label className="mt-4 block"><span className="label">Seedance 提示词</span><textarea className="field min-h-[27rem] resize-y leading-6" value={prompt} disabled={editLocked} onChange={e => setPrompt(e.target.value)} placeholder="主体、动作、台词、景别、运镜、光线与声音…" /></label>
+          <label className="mt-4 block"><span className="label">Seedance 提示词</span><textarea className="field min-h-[35rem] resize-y leading-6" value={prompt} disabled={editLocked} onChange={e => setPrompt(e.target.value)} placeholder="主体、动作、台词、景别、运镜、光线与声音…" /></label>
           <div className="mt-4">
             <div className="label">Base64 参考素材 · 最多 9 张</div>
             <div className="flex flex-wrap gap-2">
@@ -356,9 +357,9 @@ function ShotCard({ shot, entities, selected, locked, onToggleSelected, onDirtyC
           </div>
         </div>
         <div className="border-t border-[var(--line)] bg-[var(--navy)] p-4 text-white xl:border-l xl:border-t-0">
-          <div className="timecode mb-3 flex items-center justify-between text-[10px] text-white/45"><span>VIDEO TAKE</span><span>{completeVideos.length} VERSIONS</span></div>
-          <div className="flex aspect-video items-center justify-center overflow-hidden rounded-xl bg-black/45">
-            {shot.selectedVideo?.url ? <video key={shot.selectedVideo.url} src={shot.selectedVideo.url} controls preload="metadata" className="h-full w-full object-contain" /> : shot.status === 'generating' ? <div className="text-center text-xs text-white/60"><Loader2 className="mx-auto mb-2 h-6 w-6 animate-spin text-[var(--projector)]" />Seedance 正在制作</div> : <Video className="h-10 w-10 text-white/15" />}
+          <div className="timecode mb-3 flex items-center justify-between text-[10px] text-white/45"><span>VIDEO TAKE · {ratio}</span><span>{completeVideos.length} VERSIONS</span></div>
+          <div className={`flex items-center justify-center overflow-hidden rounded-xl bg-black/45 ${ratio === '9:16' ? 'mx-auto aspect-[9/16] w-full max-w-[20rem]' : 'aspect-video w-full'}`}>
+            {activeVideo?.url ? <video key={activeVideo.url} src={activeVideo.url} controls preload="metadata" className="h-full w-full object-contain" /> : shot.status === 'generating' ? <div className="text-center text-xs text-white/60"><Loader2 className="mx-auto mb-2 h-6 w-6 animate-spin text-[var(--projector)]" />Seedance 正在制作</div> : <Video className="h-10 w-10 text-white/15" />}
           </div>
           {completeVideos.length > 0 && <div className="mt-3 flex gap-2 overflow-x-auto">{completeVideos.map((video, index) => <button key={video.id} disabled={editLocked} onClick={() => void selectVideo(video.id)} className={`timecode rounded-lg border px-3 py-2 text-[10px] ${video.id === activeVideo?.id ? 'border-[var(--projector)] bg-[var(--projector)]/10 text-[var(--projector)]' : 'border-white/10 text-white/50'}`}>TAKE {String(index + 1).padStart(2, '0')}</button>)}</div>}
           {activeVideo && (
