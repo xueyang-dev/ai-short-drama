@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { loadSkill, loadSkillPrompt } from './skills'
 
-const STANDARD_SKILLS = ['script-brief', 'drama-script', 'drama-shot-prompt', 'sd2-pe']
+const STANDARD_SKILLS = ['script-brief', 'drama-script', 'drama-shot-prompt', 'sd2-pe', 'sd25-pe']
 
 describe('标准影视 Skills', () => {
   it.each(STANDARD_SKILLS)('%s 只有标准元数据并可独立加载', async name => {
@@ -71,6 +71,16 @@ describe('标准影视 Skills', () => {
     expect(prompt).toContain('路径 A')
     expect(prompt).toContain('路径 B')
     expect(prompt).toContain('一镜一运镜')
+  })
+
+  it('保留 Seedance 2.5 官方提示词优化 Skill 作为未来模型升级备用', async () => {
+    const prompt = await loadSkillPrompt('sd25-pe')
+    expect(prompt).toContain('Seedance 2.5 Prompt Optimizer')
+    expect(prompt).toContain('多关键帧顺序控制')
+    expect(prompt).toContain('宫格分镜与故事板')
+    expect(prompt).toContain('白模参考与渲染')
+    expect(prompt).toContain('视频延长模板')
+    expect(prompt).toContain('默认只输出优化后的 Prompt 正文')
   })
 
   it('拒绝路径穿越和非标准 Skill 名称', async () => {
