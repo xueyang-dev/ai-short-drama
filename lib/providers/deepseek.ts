@@ -69,6 +69,29 @@ const optimizedScriptBriefSchema = z.object({
   tips: z.array(z.string()).max(5).default([]),
 })
 
+const skillQualityAreaSchema = z.object({
+  score: z.number().int().min(0).max(100),
+  strengths: z.array(z.string().min(1)).max(8),
+  weaknesses: z.array(z.string().min(1)).max(8),
+  evidence: z.array(z.string().min(1)).max(8),
+})
+
+const shortDramaSkillQualitySchema = z.object({
+  skills: z.object({
+    scriptBrief: skillQualityAreaSchema,
+    dramaScript: skillQualityAreaSchema,
+    dramaShotPrompt: skillQualityAreaSchema,
+  }),
+  workflow: z.object({
+    score: z.number().int().min(0).max(100),
+    verdict: z.enum(['excellent', 'pass', 'needs_improvement', 'fail']),
+    blockingIssues: z.array(z.string().min(1)).max(8),
+    recommendations: z.array(z.string().min(1)).max(8),
+  }),
+})
+
+export type ShortDramaSkillQualityJudgement = z.output<typeof shortDramaSkillQualitySchema>
+
 // DeepSeek 官方说明 JSON Output 偶尔会返回空 content；只对可恢复的响应问题限次重试。
 const DEEPSEEK_JSON_MAX_ATTEMPTS = 2
 const DEEPSEEK_JSON_RETRY_INSTRUCTION = `【JSON 输出重试要求】
@@ -559,6 +582,16 @@ interface SceneCountRange {
   source: 'default' | 'user'
 }
 
+const MIN_SCRIPT_SCENES = 8
+const RECOMMENDED_SCRIPT_SCENES = 10
+const MAX_SCRIPT_SCENES = 15
+
+function requireSupportedSceneCount(min: number, max: number): void {
+  if (min < MIN_SCRIPT_SCENES || max > MAX_SCRIPT_SCENES) {
+    throw new Error(`单集场数必须在 ${MIN_SCRIPT_SCENES}–${MAX_SCRIPT_SCENES} 场之间`)
+  }
+}
+
 interface SceneHeading {
   number: number
   signature: string
@@ -568,16 +601,21 @@ function resolveSceneCountRange(input: ScriptGenerationInput): SceneCountRange {
   const requirements = `${input.brief}\n${input.instruction ?? ''}`
   const rangeMatch = requirements.match(/(?:每集|单集|每一集)[^\n。；]{0,20}?(\d{1,2})\s*[-–—~至到]\s*(\d{1,2})\s*场/)
   if (rangeMatch) {
-    const left = Math.max(1, Math.min(30, Number(rangeMatch[1])))
-    const right = Math.max(1, Math.min(30, Number(rangeMatch[2])))
-    return { min: Math.min(left, right), max: Math.max(left, right), source: 'user' }
+    const left = Number(rangeMatch[1])
+    const right = Number(rangeMatch[2])
+    const min = Math.min(left, right)
+    const max = Math.max(left, right)
+    requireSupportedSceneCount(min, max)
+    return { min, max, source: 'user' }
   }
-  const exactMatch = requirements.match(/(?:每集|单集|每一集)[^\n。；]{0,20}?(\d{1,2})\s*场/)
+  const exactMatch = requirements.match(/(?:必须|务必|严格)?\s*(?:恰好|正好|固定为|限定为|控制为)\s*(\d{1,2})\s*场/)
+    ?? requirements.match(/(?:每集|单集|每一集)[^\n。；]{0,20}?(\d{1,2})\s*场/)
   if (exactMatch) {
-    const count = Math.max(1, Math.min(30, Number(exactMatch[1])))
+    const count = Number(exactMatch[1])
+    requireSupportedSceneCount(count, count)
     return { min: count, max: count, source: 'user' }
   }
-  return { min: 10, max: 15, source: 'default' }
+  return { min: MIN_SCRIPT_SCENES, max: MAX_SCRIPT_SCENES, source: 'default' }
 }
 
 function parseSceneHeadings(content: string): SceneHeading[] {
@@ -660,7 +698,7 @@ export async function generateScript(input: ScriptGenerationInput): Promise<Gene
   const sceneCountRange = resolveSceneCountRange(input)
   const sceneCountInstruction = sceneCountRange.source === 'user'
     ? `每集必须为 ${sceneCountRange.min === sceneCountRange.max ? `${sceneCountRange.min} 场` : `${sceneCountRange.min}–${sceneCountRange.max} 场`}，这是用户明确要求`
-    : '标准剧集每集写 10 场完整戏；情节复杂、多线并行时可写 12–15 场'
+    : `每集允许 ${MIN_SCRIPT_SCENES}–${MAX_SCRIPT_SCENES} 场完整戏，默认推荐 ${RECOMMENDED_SCRIPT_SCENES} 场；按剧情需要增减但不得越界`
   const plannedEpisodesText = input.plannedEpisodes === null ? '不设定（开放式长剧）' : `${input.plannedEpisodes} 集`
   const shouldFinale = input.isFinale === true
     || (input.plannedEpisodes !== null && endEpisode >= input.plannedEpisodes)
@@ -679,13 +717,18 @@ export async function generateScript(input: ScriptGenerationInput): Promise<Gene
 - 结局要求：${shouldFinale ? `第 ${endEpisode} 集必须是大结局，完整收尾并标记【本剧终】` : '本次最后一集不是大结局，必须保留后续钩子且禁止出现剧终标记'}
 - episodeNumber 必须从 ${startEpisode} 连续递增到 ${endEpisode}，只输出本次生成范围
 - 单集场戏：${sceneCountInstruction}
-- 场号规则：每集 content 内必须从 [1] 开始连续递增，不得重号、跳号或中途重置；同一地点与时间的连续内容必须合并，不得拆场凑数；相邻场次之间必须空一行。`
+- 场号规则：每集 content 内必须从 [1] 开始连续递增，不得重号、跳号或中途重置；同一地点与时间的连续内容必须合并，不得拆场凑数；相邻场次之间必须空一行。
+- 空镜名称：scenes[].name 必须以 _黎明/_白天/_黄昏/_夜晚 或允许的完整天气词结尾；正文的 晨/日/昏/夜 必须转换为完整时段词，禁止使用 _晨/_日/_昏/_夜。`
+  const sceneCountVerification = sceneCountRange.min === sceneCountRange.max
+    ? `写正文前先规划恰好 ${sceneCountRange.min} 个具有真实转场的场次；输出前只按合法场景标注机械计数，第一场必须为 [1]、最后一场必须为 [${sceneCountRange.max}]，总数必须恰好为 ${sceneCountRange.max}。`
+    : `写正文前先规划 ${sceneCountRange.min}–${sceneCountRange.max} 个具有真实转场的场次；输出前只按合法场景标注机械计数，并确认场号从 [1] 连续递增。`
 
   const userPrompt = `请使用本 Skill 完成以下爽剧创作，并严格遵循 Skill 的 JSON 输出契约。
 
 ${taskInstruction}
 
 ${episodeControl}
+${sceneCountVerification}
 
 剧名：${input.title || '由你拟定'}
 题材：${input.genre}
@@ -707,6 +750,7 @@ ${existingScript ? `\n【全部已有剧本内容】\n${existingScript}` : ''}`
 【上一次输出未通过单集体量检查，必须完整重新创作】
 ${sceneIssues.map(issue => `- ${issue}`).join('\n')}
 - 不得只补场号或把同一连续场景拆开凑数；每一场都要有真实的地点/时间切换和完整戏剧作用。
+- 先重做目标数量的场次台账，再完整重写本集；输出前机械计数合法场景标注，并确认最后场号与目标数量一致。
 - 重新输出完整 JSON，不要解释修改过程。`
     generated = await callDeepSeekJson(systemPrompt, correctionPrompt, generatedScriptSchema, normalizeGeneratedScriptPayload)
     if (generated.episodes.length !== input.episodeCount) {
@@ -802,4 +846,63 @@ ${input.episodeContent}`
         duration: shot.duration,
       })),
   }
+}
+
+/**
+ * 开发期真实 Skill 评测使用的 AI 评审。复用与生产文本调用完全相同的
+ * DeepSeek JSON、思考、流式接收和最大输出参数，不参与产品运行时流程。
+ */
+export async function judgeShortDramaSkillQuality(input: {
+  caseDescription: string
+  scriptBriefResult: unknown
+  dramaScriptResult: unknown
+  dramaShotPromptResult: unknown
+  deterministicReports: unknown
+}): Promise<ShortDramaSkillQualityJudgement> {
+  const systemPrompt = `你是负责验收竖屏爽剧生产线的资深总编剧、制片导演和 Prompt 质量评审。你的任务是评价三个 Skill 的真实生成结果，而不是继续创作或夸奖模型。
+
+请把结构合法性视为最低门槛，重点检查以下专业质量：
+1. script-brief：用户硬约束是否完整保留，人物目标、阻力、失败代价、因果链、爽点升级和关键场景是否具体且可执行，是否越权写成剧本。
+2. drama-script：首集钩子是否及时，压迫与反击是否匹配，每场是否产生行动或信息变化，台词是否推进冲突，人物动机和证据链是否连贯，正文是否可见、可听、可拍摄，角色/空镜场景/道具资产是否忠于正文且相互解耦。
+3. drama-shot-prompt：是否完整覆盖剧本且没有添加剧情，4–15 秒切分是否符合自然表演，镜头语言、动作起止、空间关系和声音是否可执行，参考资产是否精确绑定，跨 shot 连续性是否稳定。
+4. 整体链路：上游信息是否在下游保真传递，最终结果是否达到可继续生成参考图和 Seedance 视频的标准。
+
+阶段输入边界：script-brief 只接收原始创作想法、剧名、题材、视觉风格和比例；当前批次的集数、场次、反击止步点等 scriptInstruction 会由调用方绕过 brief，直接与优化后的 brief 一起传给 drama-script。不要因为 script-brief 没有重复它从未接收的 scriptInstruction 而扣分；只检查这项约束是否在 drama-script 及下游实际落实。
+
+评分必须严格：90–100 为可以直接进入专业生产；75–89 为通过但仍有明确改进点；60–74 为需要改进；0–59 为失败。引用输出中的具体事实作为证据，不要因 JSON 合法或字段齐全自动给高分。
+
+只输出一个符合下列形状的 JSON 对象；字段名和嵌套必须逐字一致，禁止改成 skill_reviews 数组、grade、conclusion、issues 或其他自创结构：
+{
+  "skills": {
+    "scriptBrief": { "score": 0, "strengths": [], "weaknesses": [], "evidence": [] },
+    "dramaScript": { "score": 0, "strengths": [], "weaknesses": [], "evidence": [] },
+    "dramaShotPrompt": { "score": 0, "strengths": [], "weaknesses": [], "evidence": [] }
+  },
+  "workflow": {
+    "score": 0,
+    "verdict": "excellent | pass | needs_improvement | fail",
+    "blockingIssues": [],
+    "recommendations": []
+  }
+}
+所有 score 替换为 0–100 的整数；verdict 只能取四个英文枚举值之一。`
+  const userPrompt = `请评审以下同一次端到端真实调用结果。
+
+【测试案例与硬约束】
+${input.caseDescription}
+
+【确定性规则检查】
+${JSON.stringify(input.deterministicReports)}
+
+【script-brief 输出】
+${JSON.stringify(input.scriptBriefResult)}
+
+【drama-script 输出】
+${JSON.stringify(input.dramaScriptResult)}
+
+【drama-shot-prompt 输出】
+${JSON.stringify(input.dramaShotPromptResult)}
+
+请分别评价三个 Skill，并给出整条工作流的总体结论。`
+  return callDeepSeekJson(systemPrompt, userPrompt, shortDramaSkillQualitySchema)
 }

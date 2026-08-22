@@ -5,6 +5,7 @@
 
 # testing
 /coverage
+/skills/*-workspace/
 
 # next.js
 /.next/

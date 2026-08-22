@@ -1,7 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { DiagnosticError } from '../diagnostic-error'
 import { DEEPSEEK_DEFAULT_MODEL, DEEPSEEK_MAX_OUTPUT_TOKENS } from '../model-config'
-import { generateScript, generateStoryboard, optimizeScriptBrief } from './deepseek'
+import {
+  generateScript,
+  generateStoryboard,
+  judgeShortDramaSkillQuality,
+  optimizeScriptBrief,
+} from './deepseek'
 
 function episodeContent(locationPrefix: string, sceneCount = 10): string {
   const times = ['晨', '日', '昏', '夜']
@@ -437,8 +442,9 @@ describe('DeepSeek provider', () => {
     const retryBody = JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body)) as {
       messages: Array<{ content: string }>
     }
-    expect(retryBody.messages[1]?.content).toContain('第 1 集只有 3 场，要求 10–15 场')
+    expect(retryBody.messages[1]?.content).toContain('第 1 集只有 3 场，要求 8–15 场')
     expect(retryBody.messages[1]?.content).toContain('不得只补场号')
+    expect(retryBody.messages[1]?.content).toContain('默认推荐 10 场')
     expect(result.episodes[0]?.content.match(/^\[\d+\]/gm)).toHaveLength(10)
   })
 
@@ -468,14 +474,12 @@ describe('DeepSeek provider', () => {
     expect(requestBody.messages[1]?.content).toContain('相邻场次之间必须空一行')
   })
 
-  it('用户明确指定较少场数时遵循用户要求而不强制扩写', async () => {
-    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => (
-      generatedScriptResponse(episodeContent('限定场', 3))
-    ))
+  it('拒绝用户指定超出 8–15 范围的单集场数', async () => {
+    const fetchMock = vi.fn()
     vi.stubEnv('DEEPSEEK_API_KEY', 'test-key')
     vi.stubGlobal('fetch', fetchMock)
 
-    await generateScript({
+    await expect(generateScript({
       title: '三场试炼',
       brief: '每集3场戏，三场都要有完整冲突。',
       genre: '逆袭',
@@ -483,13 +487,35 @@ describe('DeepSeek provider', () => {
       ratio: '9:16',
       episodeCount: 1,
       plannedEpisodes: 10,
+    })).rejects.toThrow('单集场数必须在 8–15 场之间')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('识别“必须恰好 N 场”并把末场号机械自检写入请求', async () => {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => (
+      generatedScriptResponse(episodeContent('急诊场', 10))
+    ))
+    vi.stubEnv('DEEPSEEK_API_KEY', 'test-key')
+    vi.stubGlobal('fetch', fetchMock)
+
+    await generateScript({
+      title: '重启七日',
+      brief: '医生在婚礼前七日重生。',
+      genre: '都市重生复仇',
+      visualStyle: '电影感写实',
+      ratio: '9:16',
+      episodeCount: 1,
+      plannedEpisodes: 12,
+      instruction: '第 1 集必须恰好 10 场完整戏，前 3 场建立危机。',
     })
 
     const requestBody = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as {
       messages: Array<{ content: string }>
     }
+    expect(requestBody.messages[1]?.content).toContain('每集必须为 10 场，这是用户明确要求')
+    expect(requestBody.messages[1]?.content).toContain('最后一场必须为 [10]')
+    expect(requestBody.messages[1]?.content).toContain('scenes[].name 必须以 _黎明/_白天/_黄昏/_夜晚')
     expect(fetchMock).toHaveBeenCalledTimes(1)
-    expect(requestBody.messages[1]?.content).toContain('每集必须为 3 场，这是用户明确要求')
   })
 
   it('分镜请求携带角色文字音色描述但不需要音频参考', async () => {
@@ -540,5 +566,58 @@ describe('DeepSeek provider', () => {
     expect(userPrompt).toContain('@旧仓库_夜晚')
     expect(userPrompt).toContain('音色描述：青年女声，音调中低，冷静清晰')
     expect(userPrompt).not.toContain('音频参考')
+  })
+
+  it('真实 Skill 质量评审复用生产 DeepSeek 参数并返回结构化评分', async () => {
+    const judgement = {
+      skills: {
+        scriptBrief: { score: 88, strengths: ['约束完整'], weaknesses: ['场景略泛'], evidence: ['保留旧怀表'] },
+        dramaScript: { score: 82, strengths: ['冲突明确'], weaknesses: ['反击偏慢'], evidence: ['第三场形成倒计时'] },
+        dramaShotPrompt: { score: 85, strengths: ['镜头可执行'], weaknesses: ['部分动作略密'], evidence: ['每段控制在15秒内'] },
+      },
+      workflow: {
+        score: 84,
+        verdict: 'pass',
+        blockingIssues: [],
+        recommendations: ['强化第一轮反击的即时回报'],
+      },
+    }
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(JSON.stringify({
+      choices: [{ message: { content: JSON.stringify(judgement) } }],
+    }), { status: 200 }))
+    vi.stubEnv('DEEPSEEK_API_KEY', 'test-key')
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await judgeShortDramaSkillQuality({
+      caseDescription: '必须保留旧怀表，禁止失忆。',
+      scriptBriefResult: { brief: '结构化需求' },
+      dramaScriptResult: { episodes: [{ episodeNumber: 1 }] },
+      dramaShotPromptResult: { shots: [{ shotOrder: 1 }] },
+      deterministicReports: [{ skill: 'drama-script', score: 90 }],
+    })
+
+    const requestBody = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as {
+      model: string
+      max_tokens: number
+      thinking: { type: string }
+      response_format: { type: string }
+      stream: boolean
+      stream_options: { include_usage: boolean }
+      messages: Array<{ content: string }>
+    }
+    expect(requestBody).toMatchObject({
+      model: DEEPSEEK_DEFAULT_MODEL,
+      max_tokens: DEEPSEEK_MAX_OUTPUT_TOKENS,
+      thinking: { type: 'enabled' },
+      response_format: { type: 'json_object' },
+      stream: true,
+      stream_options: { include_usage: true },
+    })
+    expect(requestBody.messages[0]?.content).toContain('不要因 JSON 合法或字段齐全自动给高分')
+    expect(requestBody.messages[0]?.content).toContain('禁止改成 skill_reviews 数组')
+    expect(requestBody.messages[0]?.content).toContain('"dramaShotPrompt"')
+    expect(requestBody.messages[1]?.content).toContain('必须保留旧怀表')
+    expect(requestBody.messages[1]?.content).toContain('drama-shot-prompt 输出')
+    expect(result.workflow).toEqual(judgement.workflow)
   })
 })

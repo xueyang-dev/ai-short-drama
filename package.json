@@ -10,6 +10,8 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:skills": "tsx scripts/test/test-skill.ts",
+    "test:skills:live": "tsx scripts/test/test-skill.ts --mode workflow --allow-paid-call",
     "db:init": "tsx scripts/init-db.ts",
     "db:migrate": "tsx scripts/migrate-db.ts"
   },
