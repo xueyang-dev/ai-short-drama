@@ -50,10 +50,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ pro
     })
     const shots = generated.shots.map((shot, index) => {
       const references = resolveStoryboardReferenceEntities(shot.prompt, episodeEntities)
-      if (references.length > 9) throw new Error(`分镜 ${index + 1} 引用了 ${references.length} 张图片，Seedance 最多支持 9 张`)
+      if (references.length > 9) throw new Error(`分镜 ${index + 1} 引用了 ${references.length} 张图片，MiniMax H3 最多支持 9 张`)
       return {
         shotOrder: index + 1,
         prompt: shot.prompt,
+        dialogue: shot.dialogue,
         duration: shot.duration,
         referenceEntityIds: references.map(entity => entity.id),
       }

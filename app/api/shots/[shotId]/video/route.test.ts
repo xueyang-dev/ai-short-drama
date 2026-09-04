@@ -48,6 +48,7 @@ function entity(id: string, kind: Entity['kind'], name: string, variant: string,
   return {
     id, projectId: project.id, kind, name, variant, description: '', episodes: [1], category: '',
     metadata: kind === 'character' ? { role: name === '杨凌' ? 'protagonist' : 'supporting' } : {},
+    voiceReferencePath: null, voiceReferenceTranscript: '', speechProvider: 'local-namaa', speechModel: '',
     selectedImageId: image.id, images: [image], selectedImage: image, createdAt, updatedAt: createdAt,
   }
 }
@@ -63,6 +64,10 @@ const prompt = `素材引用与主体定义:
 镜头1：中景缓推，杨凌站在木桌旁。`
 const shot: Shot = {
   id: 'shot-1', projectId: project.id, episodeId: episode.id, shotOrder: 1, prompt, duration: 8,
+  dialogue: '', referenceImagePath: null, width: 768, height: 1280, seed: 42,
+  videoProvider: 'local-comfyui',
+  h3Model: 'MiniMax-H3/minimax_h3_fl2va_pruned_int8_convrot.safetensors',
+  h3Preset: 'fl2va-turbo-4', turboMode: true,
   referenceEntityIds: [yang.id, clinic.id], status: 'pending', providerTaskId: null, error: null,
   selectedVideoId: null, videos: [], selectedVideo: null, createdAt, updatedAt: createdAt,
 }

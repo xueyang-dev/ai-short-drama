@@ -131,6 +131,10 @@ function initialize(db: Database.Database): void {
       episodes_json TEXT NOT NULL DEFAULT '[]',
       category TEXT NOT NULL DEFAULT '',
       metadata_json TEXT NOT NULL DEFAULT '{}',
+      voice_reference_path TEXT,
+      voice_reference_transcript TEXT NOT NULL DEFAULT '',
+      speech_provider TEXT NOT NULL DEFAULT 'local-namaa',
+      speech_model TEXT NOT NULL DEFAULT '',
       selected_image_id TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
@@ -152,8 +156,17 @@ function initialize(db: Database.Database): void {
       episode_id TEXT NOT NULL REFERENCES episodes(id) ON DELETE CASCADE,
       shot_order INTEGER NOT NULL,
       prompt TEXT NOT NULL DEFAULT '',
+      dialogue TEXT NOT NULL DEFAULT '',
       duration INTEGER NOT NULL DEFAULT 5,
+      reference_image_path TEXT,
       reference_entity_ids_json TEXT NOT NULL DEFAULT '[]',
+      width INTEGER NOT NULL DEFAULT 768,
+      height INTEGER NOT NULL DEFAULT 1280,
+      seed INTEGER NOT NULL DEFAULT 0,
+      video_provider TEXT NOT NULL DEFAULT 'local-comfyui',
+      h3_model TEXT NOT NULL DEFAULT 'MiniMax-H3/minimax_h3_fl2va_pruned_int8_convrot.safetensors',
+      h3_preset TEXT NOT NULL DEFAULT 'fl2va-turbo-4',
+      turbo_mode INTEGER NOT NULL DEFAULT 1,
       status TEXT NOT NULL DEFAULT 'pending',
       provider_task_id TEXT,
       error TEXT,
@@ -171,6 +184,13 @@ function initialize(db: Database.Database): void {
       path TEXT,
       provider_task_id TEXT NOT NULL,
       model TEXT NOT NULL,
+      provider TEXT NOT NULL DEFAULT 'local-comfyui',
+      preset TEXT NOT NULL DEFAULT '',
+      width INTEGER NOT NULL DEFAULT 0,
+      height INTEGER NOT NULL DEFAULT 0,
+      seed INTEGER NOT NULL DEFAULT 0,
+      workflow_version TEXT NOT NULL DEFAULT '',
+      reference_image_path TEXT,
       duration REAL NOT NULL DEFAULT 0,
       resolution TEXT NOT NULL DEFAULT '',
       prompt TEXT NOT NULL DEFAULT '',
@@ -258,6 +278,13 @@ function videoFromRow(row: SqlRow): VideoVersion {
     path: videoPath,
     providerTaskId: String(row.provider_task_id),
     model: String(row.model),
+    provider: String(row.provider ?? 'local-comfyui'),
+    preset: String(row.preset ?? ''),
+    width: Number(row.width ?? 0),
+    height: Number(row.height ?? 0),
+    seed: Number(row.seed ?? 0),
+    workflowVersion: String(row.workflow_version ?? ''),
+    referenceImagePath: row.reference_image_path ? String(row.reference_image_path) : null,
     duration: Number(row.duration ?? 0),
     resolution: String(row.resolution ?? ''),
     prompt: String(row.prompt ?? ''),
@@ -405,6 +432,10 @@ export function getProjectBundle(projectId: string): ProjectBundle | null {
         episodes: parseJson<number[]>(row.episodes_json, []),
         category: String(row.category ?? ''),
         metadata: parseJson<Record<string, unknown>>(row.metadata_json, {}),
+        voiceReferencePath: row.voice_reference_path ? String(row.voice_reference_path) : null,
+        voiceReferenceTranscript: String(row.voice_reference_transcript ?? ''),
+        speechProvider: String(row.speech_provider ?? 'local-namaa'),
+        speechModel: String(row.speech_model ?? ''),
         selectedImageId,
         images,
         selectedImage: images.find(image => image.id === selectedImageId) ?? images[0] ?? null,
@@ -437,8 +468,17 @@ export function getProjectBundle(projectId: string): ProjectBundle | null {
         episodeId: String(row.episode_id),
         shotOrder: Number(row.shot_order),
         prompt: String(row.prompt ?? ''),
+        dialogue: String(row.dialogue ?? ''),
         duration: Number(row.duration ?? 5),
+        referenceImagePath: row.reference_image_path ? String(row.reference_image_path) : null,
         referenceEntityIds: parseJson<string[]>(row.reference_entity_ids_json, []),
+        width: Number(row.width ?? 768),
+        height: Number(row.height ?? 1280),
+        seed: Number(row.seed ?? 0),
+        videoProvider: String(row.video_provider ?? 'local-comfyui'),
+        h3Model: String(row.h3_model ?? 'MiniMax-H3/minimax_h3_fl2va_pruned_int8_convrot.safetensors'),
+        h3Preset: String(row.h3_preset ?? 'fl2va-turbo-4') as Shot['h3Preset'],
+        turboMode: Boolean(row.turbo_mode),
         status: row.status as ShotStatus,
         providerTaskId: row.provider_task_id ? String(row.provider_task_id) : null,
         error: row.error ? String(row.error) : null,
@@ -796,12 +836,24 @@ export function getEntity(id: string): Entity | null {
   return getProjectBundle(String(row.project_id))?.entities.find(entity => entity.id === id) ?? null
 }
 
-export function updateEntity(id: string, fields: Partial<Pick<Entity, 'name' | 'variant' | 'description' | 'episodes' | 'category' | 'metadata'>>): Entity | null {
+export function updateEntity(id: string, fields: Partial<Pick<Entity,
+  | 'name'
+  | 'variant'
+  | 'description'
+  | 'episodes'
+  | 'category'
+  | 'metadata'
+  | 'voiceReferencePath'
+  | 'voiceReferenceTranscript'
+  | 'speechProvider'
+  | 'speechModel'
+>>): Entity | null {
   const db = getDb()
   const current = getEntity(id)
   if (!current) return null
   db.prepare(`
-    UPDATE entities SET name = ?, variant = ?, description = ?, episodes_json = ?, category = ?, metadata_json = ?, updated_at = ?
+    UPDATE entities SET name = ?, variant = ?, description = ?, episodes_json = ?, category = ?, metadata_json = ?,
+      voice_reference_path = ?, voice_reference_transcript = ?, speech_provider = ?, speech_model = ?, updated_at = ?
     WHERE id = ?
   `).run(
     fields.name ?? current.name,
@@ -810,6 +862,10 @@ export function updateEntity(id: string, fields: Partial<Pick<Entity, 'name' | '
     JSON.stringify(fields.episodes ?? current.episodes),
     fields.category ?? current.category,
     JSON.stringify(fields.metadata ?? current.metadata),
+    fields.voiceReferencePath === undefined ? current.voiceReferencePath : fields.voiceReferencePath,
+    fields.voiceReferenceTranscript ?? current.voiceReferenceTranscript,
+    fields.speechProvider ?? current.speechProvider,
+    fields.speechModel ?? current.speechModel,
     now(),
     id,
   )
@@ -899,10 +955,13 @@ export function deleteEntityImage(entityId: string, imageId: string): { entity: 
 export function replaceStoryboard(projectId: string, episodeId: string, shots: Array<{
   shotOrder: number
   prompt: string
+  dialogue?: string
   duration: number
   referenceEntityIds: string[]
 }>): Shot[] {
   const db = getDb()
+  const project = getProject(projectId)
+  const [width, height] = project?.ratio === '16:9' ? [1280, 768] : [768, 1280]
   const transaction = db.transaction(() => {
     recoverStaleShotSubmissions(db, projectId)
     const generating = db.prepare(`
@@ -920,13 +979,13 @@ export function replaceStoryboard(projectId: string, episodeId: string, shots: A
     db.prepare('DELETE FROM shots WHERE episode_id = ? AND deleted_at IS NULL').run(episodeId)
     const insert = db.prepare(`
       INSERT INTO shots (
-        id, project_id, episode_id, shot_order, prompt, duration, reference_entity_ids_json,
+        id, project_id, episode_id, shot_order, prompt, dialogue, duration, reference_entity_ids_json, width, height,
         status, provider_task_id, error, selected_video_id, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', NULL, NULL, NULL, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', NULL, NULL, NULL, ?, ?)
     `)
     shots.forEach((shot, index) => insert.run(
-      randomUUID(), projectId, episodeId, index + 1, shot.prompt, shot.duration,
-      JSON.stringify(shot.referenceEntityIds), timestamp, timestamp,
+      randomUUID(), projectId, episodeId, index + 1, shot.prompt, shot.dialogue ?? '', shot.duration,
+      JSON.stringify(shot.referenceEntityIds), width, height, timestamp, timestamp,
     ))
   })
   transaction()
@@ -941,12 +1000,15 @@ export function createShot(projectId: string, episodeId: string): Shot {
   const order = Number(maxRow.max_order ?? 0) + 1
   const id = randomUUID()
   const timestamp = now()
+  const project = getProject(projectId)
+  const [width, height] = project?.ratio === '16:9' ? [1280, 768] : [768, 1280]
   db.prepare(`
     INSERT INTO shots (
-      id, project_id, episode_id, shot_order, prompt, duration, reference_entity_ids_json,
+      id, project_id, episode_id, shot_order, prompt, dialogue, duration, reference_entity_ids_json,
+      width, height,
       status, provider_task_id, error, selected_video_id, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, '', 5, '[]', 'pending', NULL, NULL, NULL, ?, ?)
-  `).run(id, projectId, episodeId, order, timestamp, timestamp)
+    ) VALUES (?, ?, ?, ?, '', '', 5, '[]', ?, ?, 'pending', NULL, NULL, NULL, ?, ?)
+  `).run(id, projectId, episodeId, order, width, height, timestamp, timestamp)
   return getShot(id)!
 }
 
@@ -958,7 +1020,21 @@ export function getShot(id: string): Shot | null {
   return getProjectBundle(String(row.project_id))?.shots.find(shot => shot.id === id) ?? null
 }
 
-export function updateShot(id: string, fields: Partial<Pick<Shot, 'prompt' | 'duration' | 'referenceEntityIds' | 'selectedVideoId'>>): Shot | null {
+export function updateShot(id: string, fields: Partial<Pick<Shot,
+  | 'prompt'
+  | 'dialogue'
+  | 'duration'
+  | 'referenceImagePath'
+  | 'referenceEntityIds'
+  | 'width'
+  | 'height'
+  | 'seed'
+  | 'videoProvider'
+  | 'h3Model'
+  | 'h3Preset'
+  | 'turboMode'
+  | 'selectedVideoId'
+>>): Shot | null {
   const db = getDb()
   const current = getShot(id)
   if (!current) return null
@@ -969,12 +1045,23 @@ export function updateShot(id: string, fields: Partial<Pick<Shot, 'prompt' | 'du
     if (!owns) return null
   }
   db.prepare(`
-    UPDATE shots SET prompt = ?, duration = ?, reference_entity_ids_json = ?, selected_video_id = ?, updated_at = ?
+    UPDATE shots SET prompt = ?, dialogue = ?, duration = ?, reference_image_path = ?,
+      reference_entity_ids_json = ?, width = ?, height = ?, seed = ?, video_provider = ?,
+      h3_model = ?, h3_preset = ?, turbo_mode = ?, selected_video_id = ?, updated_at = ?
     WHERE id = ?
   `).run(
     fields.prompt ?? current.prompt,
+    fields.dialogue ?? current.dialogue,
     fields.duration ?? current.duration,
+    fields.referenceImagePath === undefined ? current.referenceImagePath : fields.referenceImagePath,
     JSON.stringify(fields.referenceEntityIds ?? current.referenceEntityIds),
+    fields.width ?? current.width,
+    fields.height ?? current.height,
+    fields.seed ?? current.seed,
+    fields.videoProvider ?? current.videoProvider,
+    fields.h3Model ?? current.h3Model,
+    fields.h3Preset ?? current.h3Preset,
+    fields.turboMode === undefined ? Number(current.turboMode) : Number(fields.turboMode),
     fields.selectedVideoId ?? current.selectedVideoId,
     now(),
     id,
@@ -1011,9 +1098,14 @@ export function markShotGenerating(shotId: string, taskId: string, model: string
   const timestamp = now()
   const transaction = db.transaction(() => {
     db.prepare(`
-      INSERT INTO shot_videos (id, shot_id, path, provider_task_id, model, duration, resolution, prompt, created_at)
-      VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?)
-    `).run(versionId, shotId, taskId, model, shot.duration, resolution, shot.prompt, timestamp)
+      INSERT INTO shot_videos (
+        id, shot_id, path, provider_task_id, model, provider, preset, width, height, seed,
+        workflow_version, reference_image_path, duration, resolution, prompt, created_at
+      ) VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      versionId, shotId, taskId, model, shot.videoProvider, shot.h3Preset, shot.width, shot.height,
+      shot.seed, '', shot.referenceImagePath, shot.duration, resolution, shot.prompt, timestamp,
+    )
     db.prepare(`
       UPDATE shots SET status = 'generating', provider_task_id = ?, error = NULL, updated_at = ? WHERE id = ?
     `).run(taskId, timestamp, shotId)
@@ -1048,8 +1140,17 @@ export function addShotVideo(shotId: string, input: {
   model: string
   duration: number
   resolution: string
+  provider?: string
+  preset?: string
+  width?: number
+  height?: number
+  seed?: number
+  workflowVersion?: string
+  referenceImagePath?: string | null
 }): Shot {
   const db = getDb()
+  const shot = getShot(shotId)
+  if (!shot) throw new Error('分镜不存在')
   const timestamp = now()
   const transaction = db.transaction(() => {
     const pending = db.prepare(`
@@ -1060,13 +1161,27 @@ export function addShotVideo(shotId: string, input: {
     const id = pending ? String(pending.id) : randomUUID()
     if (pending) {
       db.prepare(`
-        UPDATE shot_videos SET path = ?, model = ?, duration = ?, resolution = ? WHERE id = ?
-      `).run(input.path, input.model, input.duration, input.resolution, id)
+        UPDATE shot_videos SET path = ?, model = ?, provider = ?, preset = ?, width = ?, height = ?,
+          seed = ?, workflow_version = ?, reference_image_path = ?, duration = ?, resolution = ? WHERE id = ?
+      `).run(
+        input.path, input.model, input.provider ?? shot.videoProvider, input.preset ?? shot.h3Preset,
+        input.width ?? shot.width, input.height ?? shot.height, input.seed ?? shot.seed,
+        input.workflowVersion ?? '', input.referenceImagePath === undefined ? shot.referenceImagePath : input.referenceImagePath,
+        input.duration, input.resolution, id,
+      )
     } else {
       db.prepare(`
-        INSERT INTO shot_videos (id, shot_id, path, provider_task_id, model, duration, resolution, prompt, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(id, shotId, input.path, input.providerTaskId, input.model, input.duration, input.resolution, getShot(shotId)?.prompt ?? '', timestamp)
+        INSERT INTO shot_videos (
+          id, shot_id, path, provider_task_id, model, provider, preset, width, height, seed,
+          workflow_version, reference_image_path, duration, resolution, prompt, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        id, shotId, input.path, input.providerTaskId, input.model, input.provider ?? shot.videoProvider,
+        input.preset ?? shot.h3Preset, input.width ?? shot.width, input.height ?? shot.height,
+        input.seed ?? shot.seed, input.workflowVersion ?? '',
+        input.referenceImagePath === undefined ? shot.referenceImagePath : input.referenceImagePath,
+        input.duration, input.resolution, shot.prompt, timestamp,
+      )
     }
     db.prepare(`
       UPDATE shots SET status = 'success', selected_video_id = ?, provider_task_id = ?, error = NULL, updated_at = ?

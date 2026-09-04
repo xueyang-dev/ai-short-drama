@@ -162,11 +162,13 @@ describe('显式 SQLite 迁移', () => {
       { id: '20260805213800-add-planned-episodes', status: 'applied' },
       { id: '20260806171147-add-shot-video-details', status: 'applied' },
       { id: '20260806223000-add-soft-deletion', status: 'applied' },
+      { id: '20260904222500-add-local-generation-fields', status: 'applied' },
     ])
     expect(runMigrations({ dbPath })).toEqual([
       { id: '20260805213800-add-planned-episodes', status: 'skipped' },
       { id: '20260806171147-add-shot-video-details', status: 'skipped' },
       { id: '20260806223000-add-soft-deletion', status: 'skipped' },
+      { id: '20260904222500-add-local-generation-fields', status: 'skipped' },
     ])
 
     const db = new Database(dbPath, { readonly: true })
@@ -175,7 +177,10 @@ describe('显式 SQLite 迁移', () => {
       SELECT id, title, brief, planned_episodes FROM projects WHERE id = ?
     `).get('project-before-migration') as Record<string, unknown>
     const videoColumns = db.prepare('PRAGMA table_info(shot_videos)').all() as Array<{ name: string }>
-    const video = db.prepare('SELECT path, prompt, rating, note, deleted_at FROM shot_videos WHERE id = ?')
+    const video = db.prepare(`
+      SELECT path, prompt, rating, note, provider, preset, width, height, seed, workflow_version,
+        reference_image_path, deleted_at FROM shot_videos WHERE id = ?
+    `)
       .get('video-before-migration') as Record<string, unknown>
     const tableColumns = Object.fromEntries([
       'projects', 'episodes', 'entities', 'entity_images', 'shots', 'shot_videos', 'edits',
@@ -187,13 +192,16 @@ describe('显式 SQLite 迁移', () => {
       SELECT episode_number, deleted_episode_number, deleted_at FROM episodes WHERE id = ?
     `).get('episode-before-migration') as Record<string, unknown>
     const entity = db.prepare(`
-      SELECT selected_image_id, deleted_at FROM entities WHERE id = ?
+      SELECT selected_image_id, voice_reference_path, voice_reference_transcript, speech_provider,
+        speech_model, deleted_at FROM entities WHERE id = ?
     `).get('entity-before-migration') as Record<string, unknown>
     const image = db.prepare(`
       SELECT path, deleted_at FROM entity_images WHERE id = ?
     `).get('image-before-migration') as Record<string, unknown>
     const shot = db.prepare(`
-      SELECT shot_order, deleted_shot_order, selected_video_id, deleted_at FROM shots WHERE id = ?
+      SELECT shot_order, deleted_shot_order, selected_video_id, dialogue, reference_image_path,
+        width, height, seed, video_provider, h3_model, h3_preset, turbo_mode, deleted_at
+      FROM shots WHERE id = ?
     `).get('shot-1') as Record<string, unknown>
     const edit = db.prepare(`
       SELECT output_path, deleted_at FROM edits WHERE id = ?
@@ -208,22 +216,41 @@ describe('显式 SQLite 迁移', () => {
       brief: '保留这条创作需求',
       planned_episodes: null,
     })
-    expect(videoColumns.map(column => column.name)).toEqual(expect.arrayContaining(['prompt', 'rating', 'note', 'deleted_at']))
-    expect(video).toEqual({ path: 'videos/legacy.mp4', prompt: '', rating: null, note: '', deleted_at: null })
+    expect(videoColumns.map(column => column.name)).toEqual(expect.arrayContaining([
+      'prompt', 'rating', 'note', 'provider', 'preset', 'width', 'height', 'seed', 'workflow_version',
+      'reference_image_path', 'deleted_at',
+    ]))
+    expect(video).toEqual({
+      path: 'videos/legacy.mp4', prompt: '', rating: null, note: '', provider: 'local-comfyui',
+      preset: '', width: 0, height: 0, seed: 0, workflow_version: '', reference_image_path: null,
+      deleted_at: null,
+    })
     Object.values(tableColumns).forEach(names => expect(names).toContain('deleted_at'))
     expect(tableColumns.episodes).toContain('deleted_episode_number')
     expect(tableColumns.shots).toContain('deleted_shot_order')
     expect(episode).toEqual({ episode_number: 1, deleted_episode_number: null, deleted_at: null })
-    expect(entity).toEqual({ selected_image_id: 'image-before-migration', deleted_at: null })
+    expect(entity).toEqual({
+      selected_image_id: 'image-before-migration', voice_reference_path: null,
+      voice_reference_transcript: '', speech_provider: 'local-namaa', speech_model: '', deleted_at: null,
+    })
     expect(image).toEqual({ path: 'images/legacy.png', deleted_at: null })
     expect(shot).toEqual({
       shot_order: 1,
       deleted_shot_order: null,
       selected_video_id: 'video-before-migration',
+      dialogue: '',
+      reference_image_path: null,
+      width: 768,
+      height: 1280,
+      seed: 0,
+      video_provider: 'local-comfyui',
+      h3_model: 'MiniMax-H3/minimax_h3_fl2va_pruned_int8_convrot.safetensors',
+      h3_preset: 'fl2va-turbo-4',
+      turbo_mode: 1,
       deleted_at: null,
     })
     expect(edit).toEqual({ output_path: 'exports/legacy.mp4', deleted_at: null })
-    expect(migrationCount.count).toBe(3)
+    expect(migrationCount.count).toBe(4)
   })
 
   it('迁移失败时回滚全部修改且不记录为已完成', () => {

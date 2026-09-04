@@ -29,6 +29,7 @@ import {
   saveEditDraft,
   setEditOutput,
   updateProject,
+  updateEntity,
   updateShot,
   updateShotVideo,
 } from './db'
@@ -142,13 +143,33 @@ describe('分镜视频版本', () => {
       { episodeNumber: 1, title: '第一集', content: '第一集内容' },
     ]), 1)
     const shot = createShot(project.id, bundle.episodes[0].id)
-    updateShot(shot.id, { prompt: '雨夜追车，低机位跟拍' })
+    updateShot(shot.id, {
+      prompt: '雨夜追车，低机位跟拍',
+      dialogue: 'توقّف الآن',
+      referenceImagePath: 'shot-references/take.png',
+      width: 768,
+      height: 1280,
+      seed: 20260904,
+      videoProvider: 'local-comfyui',
+      h3Model: 'MiniMax-H3/PinkCherry_fl2va_MiniMax_H3_pruned_int8_convrot-beta-0.6.safetensors',
+      h3Preset: 'fl2va-turbo-4',
+      turboMode: true,
+    })
 
     markShotGenerating(shot.id, 'task-1', 'seedance-model', '720p')
     let updated = addShotVideo(shot.id, {
       path: 'videos/take-1.mp4', providerTaskId: 'task-1', model: 'seedance-model', duration: 5, resolution: '720p',
     })
     expect(updated.selectedVideo?.prompt).toBe('雨夜追车，低机位跟拍')
+    expect(updated.selectedVideo).toMatchObject({
+      provider: 'local-comfyui',
+      preset: 'fl2va-turbo-4',
+      width: 768,
+      height: 1280,
+      seed: 20260904,
+      referenceImagePath: 'shot-references/take.png',
+    })
+    expect(updated).toMatchObject({ dialogue: 'توقّف الآن', turboMode: true })
 
     updateShot(shot.id, { prompt: '雨夜追车，航拍转近景' })
     markShotGenerating(shot.id, 'task-2', 'seedance-model', '1080p')
@@ -191,6 +212,17 @@ describe('素材图片版本', () => {
       { episodeNumber: 1, title: '第一集', content: '第一集内容' },
     ]), 1)
     const entity = bundle.entities.find(item => item.kind === 'character')!
+    expect(updateEntity(entity.id, {
+      voiceReferencePath: 'voices/lin-xia.wav',
+      voiceReferenceTranscript: 'هذا نص الصوت المرجعي',
+      speechProvider: 'local-namaa',
+      speechModel: 'NAMAA-Saudi-TTS-V2',
+    })).toMatchObject({
+      voiceReferencePath: 'voices/lin-xia.wav',
+      voiceReferenceTranscript: 'هذا نص الصوت المرجعي',
+      speechProvider: 'local-namaa',
+      speechModel: 'NAMAA-Saudi-TTS-V2',
+    })
     const first = addEntityImage(entity.id, 'images/first.png', '第一版').selectedImage!
     const second = addEntityImage(entity.id, 'images/second.png', '第二版').selectedImage!
 

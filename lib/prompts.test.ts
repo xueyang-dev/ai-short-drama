@@ -14,6 +14,7 @@ function entity(kind: EntityKind, input: Partial<Entity> = {}): Entity {
   return {
     id: `${kind}-1`, projectId: project.id, kind, name: '', variant: '', description: '', episodes: [],
     category: '', metadata: {}, selectedImageId: null, images: [], selectedImage: null,
+    voiceReferencePath: null, voiceReferenceTranscript: '', speechProvider: 'local-namaa', speechModel: '',
     createdAt, updatedAt: createdAt, ...input,
   }
 }

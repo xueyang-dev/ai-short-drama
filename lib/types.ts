@@ -57,6 +57,10 @@ export interface Entity {
   episodes: number[]
   category: string
   metadata: Record<string, unknown>
+  voiceReferencePath: string | null
+  voiceReferenceTranscript: string
+  speechProvider: string
+  speechModel: string
   selectedImageId: string | null
   images: ImageVersion[]
   selectedImage: ImageVersion | null
@@ -70,6 +74,13 @@ export interface VideoVersion {
   path: string | null
   providerTaskId: string
   model: string
+  provider: string
+  preset: string
+  width: number
+  height: number
+  seed: number
+  workflowVersion: string
+  referenceImagePath: string | null
   duration: number
   resolution: string
   prompt: string
@@ -85,8 +96,17 @@ export interface Shot {
   episodeId: string
   shotOrder: number
   prompt: string
+  dialogue: string
   duration: number
+  referenceImagePath: string | null
   referenceEntityIds: string[]
+  width: number
+  height: number
+  seed: number
+  videoProvider: string
+  h3Model: string
+  h3Preset: import('./h3-presets').H3PresetId
+  turboMode: boolean
   status: ShotStatus
   providerTaskId: string | null
   error: string | null
@@ -144,6 +164,7 @@ export interface GeneratedStoryboard {
   shots: Array<{
     shotOrder: number
     prompt: string
+    dialogue: string
     duration: number
   }>
 }

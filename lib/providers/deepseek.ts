@@ -843,6 +843,7 @@ ${input.episodeContent}`
       .map((shot, index) => ({
         shotOrder: index + 1,
         prompt: shot.prompt,
+        dialogue: shot.dialogue,
         duration: shot.duration,
       })),
   }

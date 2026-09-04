@@ -31,7 +31,9 @@ const episode: Episode = {
 function entity(id: string, name: string, episodes: number[], voiceDescription = ''): Entity {
   return {
     id, projectId: project.id, kind: 'character', name, variant: '默认造型', description: `${name}的造型`,
-    episodes, category: '', metadata: voiceDescription ? { voiceDescription } : {}, selectedImageId: null, images: [], selectedImage: null,
+    episodes, category: '', metadata: voiceDescription ? { voiceDescription } : {},
+    voiceReferencePath: null, voiceReferenceTranscript: '', speechProvider: 'local-namaa', speechModel: '',
+    selectedImageId: null, images: [], selectedImage: null,
     createdAt: project.createdAt, updatedAt: project.updatedAt,
   }
 }
