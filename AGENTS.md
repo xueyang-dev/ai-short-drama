@@ -2,7 +2,7 @@
 
 ## Product Positioning & Non-Negotiable Scope
 
-**雪风AI短剧工坊** is an open-source, local, single-user workstation that takes one story through the complete film-production flow:
+**Arabic Short Drama Studio** is an open-source, Windows-first, local, single-user workstation that takes an Arabic story through the complete film-production flow:
 
 1. 剧本
 2. 角色
@@ -11,7 +11,7 @@
 5. 分镜
 6. 剪辑成片
 
-The scope is the **爽剧创作 workflow from the XuefengAI film studio**, not the full commercial XuefengAI platform. Keep this six-step workflow usable end to end, but do not migrate unrelated tools or platform capabilities unless the user explicitly requests them.
+Keep this six-step workflow usable end to end, but do not migrate unrelated tools or platform capabilities unless the user explicitly requests them. The application must not depend on cloud AI APIs.
 
 Do not add user registration, login, accounts, permissions, points, billing, subscriptions, multi-user collaboration, organizations, admin consoles, OSS/CDN storage, cloud asset libraries, commercial task infrastructure, or other online-operation features. Do not add professional novel adaptation, general-purpose screenplay creation, or uploaded-personal-script workflows unless explicitly requested. The README should direct users who need those professional workflows to **有彩视界** at <https://youcai.art>.
 
@@ -32,22 +32,23 @@ This repository is not a continuously operated online service. Runtime applicati
 - Only individual image and video version records use database soft deletion; default media-version reads must exclude those rows. Projects, episodes, entity descriptions, shots, and edit drafts are current-state text/workflow records and do not retain historical versions when deleted, regenerated, or rewritten.
 - Persistent local images, videos, and exported films are never physically removed by application deletion or regeneration. Parent workflow records may be deleted normally; temporary working files may still be cleaned after their operation finishes.
 
-## XuefengAI Reference Boundary
+## Local Runtime Boundary
 
-Treat `C:\AI\XuefengAI` as the read-only behavioral and data reference for the scoped 爽剧 film-studio workflow. Inspect it before inventing different field meanings, generation states, step behavior, Skill rules, visual-style data, or bundled style assets. Copy only what belongs to this product's scope.
-
-XuefengAI is authoritative for the scoped workflow, professional Skill standards, prompt/output contracts, quality rules, and relevant product interactions. It is **not** automatically authoritative for this repository's provider, model ID, endpoint, token/context limits, thinking controls, streaming flags, timeouts, or other inference parameters. Select those values for the provider and model actually configured here and verify them against that provider's current official documentation.
-
-Preserve these intentional local-project differences:
+Preserve these local-project requirements:
 
 - no accounts, points, OSS, or SaaS operations;
 - provider image inputs use Base64/data URLs and generated media is persisted locally;
 - project state uses local SQLite and media files under ignored `data/`;
-- the default LLM is `deepseek-v4-flash` for all current text/Skill calls, using the configured maximum output limit; do not copy XuefengAI's per-feature model routing;
-- image generation uses Seedream 5.0 Lite, and storyboard video uses the Seedance 2.0 series.
+- script and storyboard text use a configurable local OpenAI-compatible LLM provider;
+- character, scene, and prop reference images are uploaded manually and persisted locally; there is no image-generation provider;
+- storyboard video uses a Local ComfyUI provider over localhost HTTP and application-owned, versioned API-format MiniMax H3 workflow templates;
+- the supported H3 presets are FL2VA Base, FL2VA Turbo 4, FL2VA Turbo 8, and REF2VA; PinkCherry is an FL2VA checkpoint variant, not a separate provider;
+- ComfyUI is read-only infrastructure from the application's perspective: never install dependencies into its embedded Python, update ComfyUI or custom nodes, modify models or startup arguments, or clean its input, output, or queue;
+- NAMAA and MuseTalk run as independent localhost workers with independent Python/PyTorch environments outside the repository and outside ComfyUI;
+- every AI capability is behind a replaceable, capability-specific provider interface and exposes truthful health information;
 - `drama-script` produces the episode scripts and their character looks, empty-shot scenes, and props in one generation, and the application stores those assets automatically. Do not add a separate asset-extraction step or a standalone `drama-cast-scene` runtime Skill.
-- character voice consistency is text-only: keep `voiceDescription` and pass it into storyboard prompting, but do not add voice-sample uploads, generated voice samples, or audio-reference binding.
-- editing and final export use the local FFmpeg pipeline. Do not migrate or add XuefengAI's WebGPU editor unless the user explicitly changes this decision.
+- each character can bind a local voice reference; speech provider/model identifiers must remain configurable for future Saudi or Najdi models;
+- editing and final export use the local FFmpeg pipeline for shot concatenation, audio mixing, subtitles, and MP4 output.
 
 Use provider documentation under the XuefengAI reference project's `docs/official/` only when it matches the provider and model used here; otherwise consult the current provider's official documentation. Provider changes must include mocked request-contract and response-parser tests for the exact current parameters.
 
@@ -69,4 +70,4 @@ Do not add different LLM models for individual Skills unless the user explicitly
 
 Run `npm run typecheck`, `npm run lint`, `npm test`, and `npm run build` before submitting code. Never call real AI services in automated tests. SQLite tests must use a temporary `DATA_DIR` and must never touch the user's `data/studio.sqlite` or `data/media`.
 
-Never commit secrets, databases, generated media, or user content. This unauthenticated application must not be exposed directly to the internet. Treat `C:\AI\XuefengAI` as read-only; modify only this repository. Do not make real paid model calls, upload user media, publish deployments, or mutate external systems during development or automated verification unless the user explicitly authorizes it.
+Never commit secrets, databases, generated media, model weights, local virtual environments, caches, or user content. This unauthenticated application must not be exposed directly to the internet. Do not make real paid model calls, publish deployments, or mutate external systems during automated verification unless the user explicitly authorizes it.

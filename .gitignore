@@ -40,6 +40,15 @@ next-env.d.ts
 # data directory (local storage)
 /data/
 
+# local AI runtimes and generated artifacts
+/.runtime/
+/models/
+/cache/
+/workers/**/.venv/
+/workers/**/models/
+/workers/**/cache/
+/workers/**/outputs/
+
 # IDE
 .vscode/
 .idea/
