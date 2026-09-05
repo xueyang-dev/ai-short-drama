@@ -98,4 +98,12 @@ npm run build
 
 Automated tests mock AI calls and use temporary SQLite directories. They do not submit real ComfyUI, LLM, NAMAA, or MuseTalk jobs.
 
+The real H3 GPU contract is an explicit opt-in check. It uses a deterministic reference image and temporary `DATA_DIR`, then asserts workflow parameters, SQLite snapshots, and the decoded MP4 (`608x352`, about `3s`, `24fps`, H.264/AAC):
+
+```powershell
+npm run test:h3:golden
+```
+
+This check only calls the existing ComfyUI localhost HTTP service; it never installs into or changes ComfyUI.
+
 For professional cloud workflows such as novel adaptation and broader multi-model tooling, see [有彩视界](https://youcai.art).
