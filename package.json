@@ -15,6 +15,7 @@
     "test": "vitest run",
     "test:skills": "tsx scripts/test/test-skill.ts",
     "test:skills:live": "tsx scripts/test/test-skill.ts --mode workflow --allow-paid-call",
+    "test:h3:golden": "tsx scripts/test/h3-golden-shot.ts",
     "db:init": "tsx scripts/init-db.ts",
     "db:migrate": "tsx scripts/migrate-db.ts"
   },
