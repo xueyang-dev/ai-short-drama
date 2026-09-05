@@ -1,0 +1,10 @@
+{
+  "workflowVersion": "minimax-h3/v1",
+  "template": "workflow-api.json",
+  "presets": {
+    "fl2va-base": { "mode": "image", "modelFamily": "fl2va", "steps": 20, "lora": null },
+    "fl2va-turbo-4": { "mode": "image", "modelFamily": "fl2va", "steps": 4, "lora": "MiniMax-H3/minimax_h3_fl2v_turbo_4step_v1.0_768p_comfyui_bf16.safetensors" },
+    "fl2va-turbo-8": { "mode": "image", "modelFamily": "fl2va", "steps": 8, "lora": "MiniMax-H3/minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors" },
+    "ref2va": { "mode": "reference", "modelFamily": "ref2va", "steps": 20, "lora": null }
+  }
+}

@@ -2,13 +2,14 @@ import { z } from 'zod'
 import { resolveVideoStylePrompt } from '@/config/video-styles'
 import { DiagnosticError, type PublicDiagnostics } from '../diagnostic-error'
 import {
-  DEEPSEEK_DEFAULT_MODEL,
-  DEEPSEEK_MAX_OUTPUT_TOKENS,
+  LOCAL_LLM_DEFAULT_MAX_OUTPUT_TOKENS,
+  LOCAL_LLM_DEFAULT_MODEL,
   MAX_SCRIPT_EPISODES_PER_REQUEST,
 } from '../model-config'
 import type { EntityKind, GeneratedScript, GeneratedStoryboard } from '../types'
 import { getStoryboardReferenceTag } from '../storyboard-references'
 import { loadSkillPrompt } from '../skills'
+import { providerEndpoint } from './local-url'
 
 const generatedScriptSchema = z.object({
   summary: z.object({
@@ -139,10 +140,13 @@ async function callDeepSeekJson<Schema extends z.ZodTypeAny>(
   schema: Schema,
   normalize?: (value: unknown) => unknown,
 ): Promise<z.output<Schema>> {
-  const apiKey = process.env.DEEPSEEK_API_KEY
-  if (!apiKey) throw new Error('未配置 DEEPSEEK_API_KEY')
-  const baseUrl = (process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com').replace(/\/$/, '')
-  const model = process.env.DEEPSEEK_MODEL || DEEPSEEK_DEFAULT_MODEL
+  const apiKey = process.env.LOCAL_LLM_API_KEY
+  const baseUrl = providerEndpoint('LOCAL_LLM_BASE_URL', 'http://127.0.0.1:1234/v1').toString().replace(/\/$/, '')
+  const model = process.env.LOCAL_LLM_MODEL || LOCAL_LLM_DEFAULT_MODEL
+  const configuredMaxTokens = Number(process.env.LOCAL_LLM_MAX_OUTPUT_TOKENS || LOCAL_LLM_DEFAULT_MAX_OUTPUT_TOKENS)
+  const maxTokens = Number.isInteger(configuredMaxTokens) && configuredMaxTokens > 0
+    ? configuredMaxTokens
+    : LOCAL_LLM_DEFAULT_MAX_OUTPUT_TOKENS
   const diagnosticBase: DeepSeekDiagnosticBase = {
     diagnosticId: crypto.randomUUID(),
     model,
@@ -160,7 +164,7 @@ async function callDeepSeekJson<Schema extends z.ZodTypeAny>(
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey}`,
+          ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
         },
         body: JSON.stringify({
           model,
@@ -169,10 +173,8 @@ async function callDeepSeekJson<Schema extends z.ZodTypeAny>(
             { role: 'user', content: attemptPrompt },
           ],
           response_format: { type: 'json_object' },
-          thinking: { type: 'enabled' },
-          max_tokens: DEEPSEEK_MAX_OUTPUT_TOKENS,
+          max_tokens: maxTokens,
           stream: true,
-          stream_options: { include_usage: true },
         }),
         signal: controller.signal,
       })

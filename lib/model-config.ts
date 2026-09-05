@@ -1,5 +1,5 @@
-export const DEEPSEEK_DEFAULT_MODEL = 'deepseek-v4-flash'
-export const DEEPSEEK_MAX_OUTPUT_TOKENS = 384_000
+export const LOCAL_LLM_DEFAULT_MODEL = 'qwen/qwen3.5-9b'
+export const LOCAL_LLM_DEFAULT_MAX_OUTPUT_TOKENS = 32_768
 export const MAX_SCRIPT_EPISODES_PER_REQUEST = 10
 export const SEEDREAM_5_LITE_MODEL = 'doubao-seedream-5-0-260128'
 

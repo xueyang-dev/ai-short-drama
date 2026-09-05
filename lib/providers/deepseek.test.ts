@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { DiagnosticError } from '../diagnostic-error'
-import { DEEPSEEK_DEFAULT_MODEL, DEEPSEEK_MAX_OUTPUT_TOKENS } from '../model-config'
+import { LOCAL_LLM_DEFAULT_MAX_OUTPUT_TOKENS, LOCAL_LLM_DEFAULT_MODEL } from '../model-config'
 import {
   generateScript,
   generateStoryboard,
@@ -71,7 +71,7 @@ describe('DeepSeek provider', () => {
       }],
     }), { status: 200 }))
 
-    vi.stubEnv('DEEPSEEK_API_KEY', 'test-key')
+    vi.stubEnv('LOCAL_LLM_API_KEY', 'test-key')
     vi.stubGlobal('fetch', fetchMock)
 
     const result = await optimizeScriptBrief({
@@ -90,14 +90,11 @@ describe('DeepSeek provider', () => {
       messages: Array<{ role: string; content: string }>
     }
 
-    expect(requestBody.model).toBe(DEEPSEEK_DEFAULT_MODEL)
-    expect(requestBody.max_tokens).toBe(DEEPSEEK_MAX_OUTPUT_TOKENS)
-    expect(requestBody).toMatchObject({
-      thinking: { type: 'enabled' },
-      response_format: { type: 'json_object' },
-      stream: true,
-      stream_options: { include_usage: true },
-    })
+    expect(requestBody.model).toBe(LOCAL_LLM_DEFAULT_MODEL)
+    expect(requestBody.max_tokens).toBe(LOCAL_LLM_DEFAULT_MAX_OUTPUT_TOKENS)
+    expect(requestBody).toMatchObject({ response_format: { type: 'json_object' }, stream: true })
+    expect(requestBody).not.toHaveProperty('thinking')
+    expect(requestBody).not.toHaveProperty('stream_options')
     expect(requestBody.messages[1]?.content).toContain('雨夜证词')
     expect(result.brief).toBe(optimizedBrief)
   })
@@ -120,7 +117,7 @@ describe('DeepSeek provider', () => {
         },
       }],
     }), { status: 200 }))
-    vi.stubEnv('DEEPSEEK_API_KEY', 'test-key')
+    vi.stubEnv('LOCAL_LLM_API_KEY', 'test-key')
     vi.stubGlobal('fetch', fetchMock)
 
     const result = await generateScript({
@@ -143,7 +140,7 @@ describe('DeepSeek provider', () => {
 
   it('结构校验失败时指出缺失字段路径', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined)
-    vi.stubEnv('DEEPSEEK_API_KEY', 'test-key')
+    vi.stubEnv('LOCAL_LLM_API_KEY', 'test-key')
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
       choices: [{ message: { content: JSON.stringify({
         summary: { title: '雨夜证词', synopsis: '林夏追查真相。', genre: '悬疑复仇' },
@@ -182,7 +179,7 @@ describe('DeepSeek provider', () => {
       status: 200,
       headers: { 'Content-Type': 'text/event-stream', 'x-request-id': 'provider-request-1' },
     }))
-    vi.stubEnv('DEEPSEEK_API_KEY', 'test-key')
+    vi.stubEnv('LOCAL_LLM_API_KEY', 'test-key')
     vi.stubGlobal('fetch', fetchMock)
 
     const result = await optimizeScriptBrief({
@@ -213,7 +210,7 @@ describe('DeepSeek provider', () => {
       status: 200,
       headers: { 'Content-Type': 'text/event-stream' },
     }))
-    vi.stubEnv('DEEPSEEK_API_KEY', 'test-key')
+    vi.stubEnv('LOCAL_LLM_API_KEY', 'test-key')
     vi.stubGlobal('fetch', fetchMock)
 
     await expect(optimizeScriptBrief({
@@ -249,7 +246,7 @@ describe('DeepSeek provider', () => {
         status: 200,
         headers: { 'Content-Type': 'text/event-stream' },
       }))
-    vi.stubEnv('DEEPSEEK_API_KEY', 'test-key')
+    vi.stubEnv('LOCAL_LLM_API_KEY', 'test-key')
     vi.stubGlobal('fetch', fetchMock)
 
     await expect(optimizeScriptBrief({
@@ -288,7 +285,7 @@ describe('DeepSeek provider', () => {
         status: 200,
         headers: { 'Content-Type': 'text/event-stream' },
       }))
-    vi.stubEnv('DEEPSEEK_API_KEY', 'test-key')
+    vi.stubEnv('LOCAL_LLM_API_KEY', 'test-key')
     vi.stubGlobal('fetch', fetchMock)
 
     await expect(optimizeScriptBrief({
@@ -309,7 +306,7 @@ describe('DeepSeek provider', () => {
       'data: [DONE]',
       '',
     ].join('\n\n')
-    vi.stubEnv('DEEPSEEK_API_KEY', 'test-key-secret')
+    vi.stubEnv('LOCAL_LLM_API_KEY', 'test-key-secret')
     const fetchMock = vi.fn(async () => new Response(stream, {
       status: 200,
       headers: { 'Content-Type': 'text/event-stream', 'x-request-id': 'provider-request-empty' },
@@ -332,7 +329,7 @@ describe('DeepSeek provider', () => {
     expect((failure as Error).message).toBe('DeepSeek 连续两次返回内容为空')
     expect((failure as DiagnosticError).diagnostics).toMatchObject({
       provider: 'deepseek',
-      model: DEEPSEEK_DEFAULT_MODEL,
+      model: LOCAL_LLM_DEFAULT_MODEL,
       phase: 'empty_content',
       attempt: 2,
       maxAttempts: 2,
@@ -379,7 +376,7 @@ describe('DeepSeek provider', () => {
       }],
     }), { status: 200 }))
 
-    vi.stubEnv('DEEPSEEK_API_KEY', 'test-key')
+    vi.stubEnv('LOCAL_LLM_API_KEY', 'test-key')
     vi.stubGlobal('fetch', fetchMock)
 
     const result = await generateScript({
@@ -425,7 +422,7 @@ describe('DeepSeek provider', () => {
       .mockResolvedValueOnce(generatedScriptResponse(episodeContent('短场', 3)))
       .mockResolvedValueOnce(generatedScriptResponse(episodeContent('完整场')))
 
-    vi.stubEnv('DEEPSEEK_API_KEY', 'test-key')
+    vi.stubEnv('LOCAL_LLM_API_KEY', 'test-key')
     vi.stubGlobal('fetch', fetchMock)
 
     const result = await generateScript({
@@ -453,7 +450,7 @@ describe('DeepSeek provider', () => {
     const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => (
       generatedScriptResponse(compactContent)
     ))
-    vi.stubEnv('DEEPSEEK_API_KEY', 'test-key')
+    vi.stubEnv('LOCAL_LLM_API_KEY', 'test-key')
     vi.stubGlobal('fetch', fetchMock)
 
     const result = await generateScript({
@@ -476,7 +473,7 @@ describe('DeepSeek provider', () => {
 
   it('拒绝用户指定超出 8–15 范围的单集场数', async () => {
     const fetchMock = vi.fn()
-    vi.stubEnv('DEEPSEEK_API_KEY', 'test-key')
+    vi.stubEnv('LOCAL_LLM_API_KEY', 'test-key')
     vi.stubGlobal('fetch', fetchMock)
 
     await expect(generateScript({
@@ -495,7 +492,7 @@ describe('DeepSeek provider', () => {
     const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => (
       generatedScriptResponse(episodeContent('急诊场', 10))
     ))
-    vi.stubEnv('DEEPSEEK_API_KEY', 'test-key')
+    vi.stubEnv('LOCAL_LLM_API_KEY', 'test-key')
     vi.stubGlobal('fetch', fetchMock)
 
     await generateScript({
@@ -532,7 +529,7 @@ describe('DeepSeek provider', () => {
         },
       }],
     }), { status: 200 }))
-    vi.stubEnv('DEEPSEEK_API_KEY', 'test-key')
+    vi.stubEnv('LOCAL_LLM_API_KEY', 'test-key')
     vi.stubGlobal('fetch', fetchMock)
 
     await generateStoryboard({
@@ -585,7 +582,7 @@ describe('DeepSeek provider', () => {
     const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(JSON.stringify({
       choices: [{ message: { content: JSON.stringify(judgement) } }],
     }), { status: 200 }))
-    vi.stubEnv('DEEPSEEK_API_KEY', 'test-key')
+    vi.stubEnv('LOCAL_LLM_API_KEY', 'test-key')
     vi.stubGlobal('fetch', fetchMock)
 
     const result = await judgeShortDramaSkillQuality({
@@ -606,12 +603,10 @@ describe('DeepSeek provider', () => {
       messages: Array<{ content: string }>
     }
     expect(requestBody).toMatchObject({
-      model: DEEPSEEK_DEFAULT_MODEL,
-      max_tokens: DEEPSEEK_MAX_OUTPUT_TOKENS,
-      thinking: { type: 'enabled' },
+      model: LOCAL_LLM_DEFAULT_MODEL,
+      max_tokens: LOCAL_LLM_DEFAULT_MAX_OUTPUT_TOKENS,
       response_format: { type: 'json_object' },
       stream: true,
-      stream_options: { include_usage: true },
     })
     expect(requestBody.messages[0]?.content).toContain('不要因 JSON 合法或字段齐全自动给高分')
     expect(requestBody.messages[0]?.content).toContain('禁止改成 skill_reviews 数组')

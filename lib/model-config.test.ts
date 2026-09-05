@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
-  DEEPSEEK_DEFAULT_MODEL,
-  DEEPSEEK_MAX_OUTPUT_TOKENS,
+  LOCAL_LLM_DEFAULT_MAX_OUTPUT_TOKENS,
+  LOCAL_LLM_DEFAULT_MODEL,
   getSeedanceModel,
   normalizeSeedanceDuration,
   seedreamSizeForRatio,
@@ -10,9 +10,9 @@ import {
 } from './model-config'
 
 describe('模型配置', () => {
-  it('默认使用 DeepSeek V4 Flash，并请求当前模型的最大输出', () => {
-    expect(DEEPSEEK_DEFAULT_MODEL).toBe('deepseek-v4-flash')
-    expect(DEEPSEEK_MAX_OUTPUT_TOKENS).toBe(384_000)
+  it('默认使用本地 Qwen，并保留可配置输出上限', () => {
+    expect(LOCAL_LLM_DEFAULT_MODEL).toBe('qwen/qwen3.5-9b')
+    expect(LOCAL_LLM_DEFAULT_MAX_OUTPUT_TOKENS).toBe(32_768)
   })
 
   it('固定使用 Seedream 5.0 Lite 并按画幅映射分辨率', () => {

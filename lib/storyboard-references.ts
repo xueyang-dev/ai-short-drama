@@ -110,10 +110,10 @@ function fallbackDefinition(entity: ReferenceEntity, imageNumber: number): strin
 }
 
 /**
- * Seedance API 不认识业务素材名。提交前把 @标签按图片输入顺序确定性替换成
+ * MiniMax H3 不认识业务素材名。提交前把 @标签按图片输入顺序确定性替换成
  * 图片1、图片2……；手动勾选但未写标签的素材会补入主体定义段。
  */
-export function bindStoryboardReferencesForSeedance(
+export function bindStoryboardReferencesForH3(
   prompt: string,
   references: readonly ReferenceEntity[],
 ): string {

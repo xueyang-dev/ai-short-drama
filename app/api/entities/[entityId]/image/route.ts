@@ -1,14 +1,9 @@
 import { z } from 'zod'
-import { addEntityImage, deleteEntityImage, getEntity, getProject, selectEntityImage } from '@/lib/db'
-import { buildEntityImagePrompt } from '@/lib/prompts'
-import { generateSeedreamImage } from '@/lib/providers/seedream'
+import { addEntityImage, deleteEntityImage, getEntity, selectEntityImage } from '@/lib/db'
 import { saveDataUrl } from '@/lib/local-media'
 import { fail, ok } from '@/lib/api'
 
-export const maxDuration = 600
-
 const schema = z.discriminatedUnion('action', [
-  z.object({ action: z.literal('generate'), referenceCurrent: z.boolean().optional(), threeView: z.boolean().optional() }),
   z.object({ action: z.literal('upload'), dataUrl: z.string().min(20) }),
   z.object({ action: z.literal('select'), imageId: z.string().uuid() }),
   z.object({ action: z.literal('delete'), imageId: z.string().uuid() }),
@@ -33,14 +28,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ ent
       const imagePath = await saveDataUrl(body.dataUrl, 'uploads')
       return ok(addEntityImage(entity.id, imagePath, '本地上传'))
     }
-    const project = getProject(entity.projectId)!
-    const prompt = buildEntityImagePrompt(entity, project, body.threeView ?? true)
-    const result = await generateSeedreamImage({
-      prompt,
-      ratio: entity.kind === 'scene' ? project.ratio : '1:1',
-      referencePath: body.referenceCurrent ? entity.selectedImage?.path : null,
-    })
-    return ok(addEntityImage(entity.id, result.path, result.prompt))
+    return fail('不支持的图片操作', 400)
   } catch (error) {
     const status = error instanceof z.ZodError
       ? 400

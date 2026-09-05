@@ -52,10 +52,10 @@ export interface VideoGenerationRequest {
 export interface VideoGenerationOutput {
   path: string
   mimeType: 'video/mp4'
-  width: number
-  height: number
-  duration: number
-  seed: number
+  width?: number
+  height?: number
+  duration?: number
+  seed?: number
 }
 
 export interface VideoGenerationProvider extends HealthCheckableProvider {

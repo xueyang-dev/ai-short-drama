@@ -1090,7 +1090,13 @@ export function deleteShot(id: string): boolean {
   return true
 }
 
-export function markShotGenerating(shotId: string, taskId: string, model: string, resolution: string): Shot {
+export function markShotGenerating(
+  shotId: string,
+  taskId: string,
+  model: string,
+  resolution: string,
+  workflowVersion = '',
+): Shot {
   const db = getDb()
   const shot = getShot(shotId)
   if (!shot) throw new Error('分镜不存在')
@@ -1104,7 +1110,7 @@ export function markShotGenerating(shotId: string, taskId: string, model: string
       ) VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       versionId, shotId, taskId, model, shot.videoProvider, shot.h3Preset, shot.width, shot.height,
-      shot.seed, '', shot.referenceImagePath, shot.duration, resolution, shot.prompt, timestamp,
+      shot.seed, workflowVersion, shot.referenceImagePath, shot.duration, resolution, shot.prompt, timestamp,
     )
     db.prepare(`
       UPDATE shots SET status = 'generating', provider_task_id = ?, error = NULL, updated_at = ? WHERE id = ?

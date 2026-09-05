@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  bindStoryboardReferencesForSeedance,
+  bindStoryboardReferencesForH3,
   getStoryboardReferenceTag,
   resolveStoryboardReferenceEntities,
 } from './storyboard-references'
@@ -44,13 +44,13 @@ describe('storyboard reference binding', () => {
     const unknownLongTag = '素材引用与主体定义:\n- 将 @医馆_夜 定义为场景「医馆_夜」'
 
     expect(resolveStoryboardReferenceEntities(unknownLongTag, [shortScene])).toEqual([])
-    expect(bindStoryboardReferencesForSeedance(unknownLongTag, [shortScene])).toContain('@医馆_夜')
-    expect(bindStoryboardReferencesForSeedance(unknownLongTag, [shortScene])).toContain('- 将 图片1 定义为场景「医馆」')
+    expect(bindStoryboardReferencesForH3(unknownLongTag, [shortScene])).toContain('@医馆_夜')
+    expect(bindStoryboardReferencesForH3(unknownLongTag, [shortScene])).toContain('- 将 图片1 定义为场景「医馆」')
   })
 
-  it('提交 Seedance 前将 @标签替换为与图片输入顺序一致的图片编号', () => {
+  it('提交 H3 前将 @标签替换为与图片输入顺序一致的图片编号', () => {
     const references = resolveStoryboardReferenceEntities(prompt, entities)
-    const bound = bindStoryboardReferencesForSeedance(prompt, references)
+    const bound = bindStoryboardReferencesForH3(prompt, references)
 
     expect(bound).toContain('将 图片1 定义为主角「杨凌」')
     expect(bound).toContain('将 图片2 定义为角色「林婉儿」')
@@ -61,7 +61,7 @@ describe('storyboard reference binding', () => {
   })
 
   it('为手动勾选但未写 @标签的参考图补充主体定义', () => {
-    const bound = bindStoryboardReferencesForSeedance('镜头1：杨凌走入医馆。', [entities[0], entities[2]])
+    const bound = bindStoryboardReferencesForH3('镜头1：杨凌走入医馆。', [entities[0], entities[2]])
 
     expect(bound).toMatch(/^素材引用与主体定义:/)
     expect(bound).toContain('- 将 图片1 定义为主角「杨凌」')
