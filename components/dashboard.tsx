@@ -69,12 +69,12 @@ export function Dashboard() {
           <div className="flex flex-col justify-between p-7 md:p-10">
             <div className="flex items-center gap-3 text-xs font-bold uppercase tracking-[.2em] text-white/55">
               <Clapperboard className="h-4 w-4 text-[var(--timecode)]" />
-              雪风AI短剧工坊 · Local production desk
+              Arabic Short Drama Studio · Local production desk
             </div>
             <div className="mt-12 max-w-3xl">
               <h1 className="display-type text-4xl font-semibold leading-tight md:text-6xl">把一个想法或故事，变成一部完整影片。</h1>
               <p className="mt-5 max-w-2xl text-sm leading-7 text-white/65 md:text-base">
-                从构思和剧本，到角色、场景、道具与分镜视频，再通过本机剪辑完成成片——雪风AI短剧工坊覆盖完整的影片制作流程。
+                从 Arabic 剧本，到角色、场景、道具与 H3 分镜视频，再通过本机 FFmpeg 完成成片——所有项目数据与媒体均保存在本地。
               </p>
             </div>
           </div>

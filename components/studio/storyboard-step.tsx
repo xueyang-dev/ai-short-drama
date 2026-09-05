@@ -1,13 +1,13 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Clapperboard, Clock3, Loader2, Plus, Save, Sparkles, Trash2, Video } from 'lucide-react'
+import { Clapperboard, Clock3, Loader2, Plus, Save, Sparkles, Trash2, Upload, Video } from 'lucide-react'
 import { toast } from 'sonner'
 import { confirmToast } from '@/components/confirm-toast'
 import { useTimer } from '@/lib/hooks/use-timer'
-import { SEEDANCE_MODELS } from '@/lib/model-config'
+import { H3_CHECKPOINTS, H3_PRESET_IDS, H3_PRESETS, type H3PresetId } from '@/lib/h3-presets'
 import type { Entity, ProjectBundle, Shot } from '@/lib/types'
-import { requestJson } from './client'
+import { fileAsDataUrl, requestJson } from './client'
 
 interface Props {
   bundle: ProjectBundle
@@ -18,16 +18,13 @@ const SPLIT_FEEDBACK_STAGES = [
   { startsAt: 0, title: '正在核对剧本与创作素材', detail: '识别本集角色、空镜场景、道具、音色和视觉风格。' },
   { startsAt: 25, title: '正在拆分剧情节拍与时长', detail: '按场景、对白、动作和情绪转折规划连续视频片段。' },
   { startsAt: 70, title: '正在规划镜头衔接与素材引用', detail: '匹配每个镜头出场的角色形象、场景和道具参考图。' },
-  { startsAt: 130, title: '正在编写 Seedance 视频提示词', detail: '组织景别、运镜、动作、对白、声音和画面风格。' },
+  { startsAt: 130, title: '正在编写 MiniMax H3 视频提示词', detail: '组织景别、运镜、动作、对白、声音和画面风格。' },
   { startsAt: 220, title: '正在检查完整性并组装结果', detail: '核对剧情覆盖、片段时长、素材引用和输出结构。' },
 ] as const
 
 export function StoryboardStep({ bundle, refresh }: Props) {
   const confirmedEpisodes = useMemo(() => bundle.episodes.filter(episode => episode.status === 'confirmed'), [bundle.episodes])
   const [episodeId, setEpisodeId] = useState(confirmedEpisodes[0]?.id ?? '')
-  const [model, setModel] = useState<string>(SEEDANCE_MODELS[0].id)
-  const selectedModel = SEEDANCE_MODELS.find(item => item.id === model) ?? SEEDANCE_MODELS[0]
-  const [resolution, setResolution] = useState<string>('720p')
   const [splitting, setSplitting] = useState(false)
   const [batching, setBatching] = useState(false)
   const [selectedShotIds, setSelectedShotIds] = useState<Set<string>>(() => new Set())
@@ -37,9 +34,6 @@ export function StoryboardStep({ bundle, refresh }: Props) {
   useEffect(() => {
     if (!confirmedEpisodes.some(episode => episode.id === episodeId)) setEpisodeId(confirmedEpisodes[0]?.id ?? '')
   }, [confirmedEpisodes, episodeId])
-  useEffect(() => {
-    if (!selectedModel.resolutions.includes(resolution as never)) setResolution(selectedModel.resolutions[0])
-  }, [selectedModel, resolution])
 
   const episode = bundle.episodes.find(item => item.id === episodeId)
   const shots = useMemo(() => bundle.shots.filter(shot => shot.episodeId === episodeId).sort((a, b) => a.shotOrder - b.shotOrder), [bundle.shots, episodeId])
@@ -106,7 +100,7 @@ export function StoryboardStep({ bundle, refresh }: Props) {
         method: 'POST', body: JSON.stringify({ action: 'generate', episodeId: episode.id }),
       })
       await refresh(true)
-      toast.success(`DeepSeek 已拆分 ${next.length} 个镜头`)
+      toast.success(`Local LLM 已拆分 ${next.length} 个镜头`)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '分镜拆分失败')
     } finally {
@@ -129,10 +123,10 @@ export function StoryboardStep({ bundle, refresh }: Props) {
   const generateVideo = async (shotId: string, silent = false) => {
     try {
       await requestJson<Shot>(`/api/shots/${shotId}/video`, {
-        method: 'POST', body: JSON.stringify({ model, resolution }),
+        method: 'POST', body: '{}',
       })
       if (!silent) await refresh(true)
-      if (!silent) toast.success('Seedance 任务已提交')
+      if (!silent) toast.success('MiniMax H3 任务已提交到本地 ComfyUI')
     } catch (error) {
       if (!silent) toast.error(error instanceof Error ? error.message : '提交失败')
       throw error
@@ -148,17 +142,16 @@ export function StoryboardStep({ bundle, refresh }: Props) {
     if (!pending.length) return toast.info('选中的镜头没有可提交任务')
     if (!await confirmToast({
       title: `提交 ${pending.length} 个视频任务？`,
-      description: 'Seedance 任务将按每组 2 个控制并发，提交后可在分镜列表查看进度。',
+      description: 'MiniMax H3 任务将顺序提交到本地 ComfyUI，提交后可在分镜列表查看进度。',
       confirmLabel: '确认提交',
       tone: 'warning',
     })) return
     setBatching(true)
     try {
       let succeeded = 0
-      for (let index = 0; index < pending.length; index += 2) {
-        const group = pending.slice(index, index + 2)
-        const results = await Promise.allSettled(group.map(shot => generateVideo(shot.id, true)))
-        succeeded += results.filter(result => result.status === 'fulfilled').length
+      for (const shot of pending) {
+        const result = await Promise.allSettled([generateVideo(shot.id, true)])
+        succeeded += result[0].status === 'fulfilled' ? 1 : 0
       }
       await refresh(true)
       if (succeeded === pending.length) toast.success(`已提交 ${succeeded}/${pending.length} 个视频任务`)
@@ -177,12 +170,10 @@ export function StoryboardStep({ bundle, refresh }: Props) {
           <div className="min-w-0">
             <div className="label">Shot planning & generation</div>
             <h3 className="display-type text-2xl font-semibold">分镜导演台</h3>
-            <p className="mt-1 text-sm text-[var(--muted)]">DeepSeek 加载 drama-shot-prompt Skill 拆镜，Seedance 2.0 使用选定角色、场景和道具的本地图片 Base64 作为参考。</p>
+            <p className="mt-1 text-sm text-[var(--muted)]">Local LLM 负责拆镜；MiniMax H3 通过 localhost ComfyUI 使用本地参考图生成视频。</p>
           </div>
-          <div className="grid min-w-0 gap-2 sm:grid-cols-2 md:grid-cols-3 min-[1500px]:grid-cols-[minmax(0,1.1fr)_minmax(0,1.3fr)_minmax(88px,.55fr)_auto_auto]">
+          <div className="grid min-w-0 gap-2 sm:grid-cols-2 min-[1500px]:grid-cols-[minmax(0,1fr)_auto_auto]">
             <label><span className="label">已定稿分集</span><select className="field" value={episodeId} disabled={workflowBusy} onChange={e => { setEpisodeId(e.target.value); setSelectedShotIds(new Set()) }}>{confirmedEpisodes.map(item => <option key={item.id} value={item.id}>第{item.episodeNumber}集 · {item.title}</option>)}</select></label>
-            <label><span className="label">视频模型</span><select className="field" value={model} disabled={workflowBusy} onChange={e => setModel(e.target.value)}>{SEEDANCE_MODELS.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
-            <label><span className="label">分辨率</span><select className="field" value={resolution} disabled={workflowBusy} onChange={e => setResolution(e.target.value)}>{selectedModel.resolutions.map(value => <option key={value} value={value}>{value}</option>)}</select></label>
             <button className="btn-secondary self-end whitespace-nowrap" disabled={!episode || workflowBusy || episodeHasGenerating} onClick={() => void split()}>{splitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}{splitting ? `拆分中 ${splitElapsedTime}` : shots.length ? '重新拆分' : 'AI 拆分'}</button>
             <button className="btn-primary self-end whitespace-nowrap md:col-span-2 min-[1500px]:col-span-1" disabled={!selectedShotIds.size || workflowBusy} onClick={() => void batchGenerate()}>{batching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Video className="h-4 w-4" />}批量生成{selectedShotIds.size ? ` (${selectedShotIds.size})` : ''}</button>
           </div>
@@ -210,7 +201,7 @@ export function StoryboardStep({ bundle, refresh }: Props) {
       {!episode ? (
         <div className="panel py-24 text-center text-sm text-[var(--muted)]">请先在剧本步骤创建并定稿分集。</div>
       ) : shots.length === 0 ? (
-        <div className="panel flex flex-col items-center border-dashed py-24 text-center"><Clapperboard className="mb-4 h-10 w-10 text-[var(--projector)]" /><strong className="text-lg">本集还没有分镜</strong><p className="mt-2 text-sm text-[var(--muted)]">确认剧本和素材后，让 DeepSeek 拆成可生成的视频镜头。</p><button className="btn-primary mt-5" disabled={workflowBusy} onClick={() => void split()}>{splitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}{splitting ? `拆分中 · ${splitElapsedTime}` : 'AI 拆分本集'}</button></div>
+        <div className="panel flex flex-col items-center border-dashed py-24 text-center"><Clapperboard className="mb-4 h-10 w-10 text-[var(--projector)]" /><strong className="text-lg">本集还没有分镜</strong><p className="mt-2 text-sm text-[var(--muted)]">确认剧本和素材后，让 Local LLM 拆成可生成的视频镜头。</p><button className="btn-primary mt-5" disabled={workflowBusy} onClick={() => void split()}>{splitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}{splitting ? `拆分中 · ${splitElapsedTime}` : 'AI 拆分本集'}</button></div>
       ) : (
         <div className="space-y-4">
           <div className="panel-muted flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-xs text-[var(--muted)]">
@@ -239,11 +230,19 @@ function ShotCard({ shot, entities, ratio, selected, locked, onToggleSelected, o
   onGenerate: (shotId: string) => Promise<void>
 }) {
   const [prompt, setPrompt] = useState(shot.prompt)
+  const [dialogue, setDialogue] = useState(shot.dialogue)
   const [duration, setDuration] = useState(shot.duration)
   const [referenceIds, setReferenceIds] = useState(shot.referenceEntityIds)
+  const [width, setWidth] = useState(shot.width)
+  const [height, setHeight] = useState(shot.height)
+  const [seed, setSeed] = useState(shot.seed)
+  const [model, setModel] = useState(shot.h3Model)
+  const [preset, setPreset] = useState<H3PresetId>(shot.h3Preset)
   const [saving, setSaving] = useState(false)
   const [generating, setGenerating] = useState(false)
-  const dirty = prompt !== shot.prompt || duration !== shot.duration || JSON.stringify(referenceIds) !== JSON.stringify(shot.referenceEntityIds)
+  const dirty = prompt !== shot.prompt || dialogue !== shot.dialogue || duration !== shot.duration
+    || width !== shot.width || height !== shot.height || seed !== shot.seed || model !== shot.h3Model
+    || preset !== shot.h3Preset || JSON.stringify(referenceIds) !== JSON.stringify(shot.referenceEntityIds)
   const editLocked = locked || shot.status === 'generating'
 
   useEffect(() => {
@@ -254,7 +253,13 @@ function ShotCard({ shot, entities, ratio, selected, locked, onToggleSelected, o
   const save = async (quiet = false) => {
     setSaving(true)
     try {
-      await requestJson(`/api/shots/${shot.id}`, { method: 'PATCH', body: JSON.stringify({ prompt, duration, referenceEntityIds: referenceIds }) })
+      await requestJson(`/api/shots/${shot.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          prompt, dialogue, duration, referenceEntityIds: referenceIds, width, height, seed,
+          h3Model: model, h3Preset: preset, turboMode: H3_PRESETS[preset].turboMode,
+        }),
+      })
       await refresh(true)
       if (!quiet) toast.success(`镜头 ${shot.shotOrder} 已保存`)
     } catch (error) {
@@ -272,6 +277,19 @@ function ShotCard({ shot, entities, ratio, selected, locked, onToggleSelected, o
       await onGenerate(shot.id)
     } finally {
       setGenerating(false)
+    }
+  }
+
+  const uploadReference = async (file: File) => {
+    try {
+      const dataUrl = await fileAsDataUrl(file)
+      await requestJson(`/api/shots/${shot.id}/reference-image`, {
+        method: 'POST', body: JSON.stringify({ dataUrl }),
+      })
+      await refresh(true)
+      toast.success('镜头参考图已保存到本地')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '参考图上传失败')
     }
   }
 
@@ -336,18 +354,30 @@ function ShotCard({ shot, entities, ratio, selected, locked, onToggleSelected, o
             <label className="flex cursor-pointer items-center gap-2 text-xs font-semibold"><input type="checkbox" checked={selected} disabled={locked} onChange={onToggleSelected} /> 批量选择</label>
             <span className="timecode rounded-md bg-[var(--navy)] px-2.5 py-1 text-xs text-white">SHOT {String(shot.shotOrder).padStart(2, '0')}</span>
             <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${statusStyle}`}>{shot.status === 'success' ? '已完成' : shot.status === 'generating' ? '生成中' : shot.status === 'failed' ? '失败' : '待生成'}</span>
-            <label className="ml-auto flex items-center gap-2 text-xs text-[var(--muted)]">时长 <input type="number" min={4} max={15} className="field !w-20 !py-1.5" value={duration} disabled={editLocked} onChange={e => setDuration(Math.max(4, Math.min(15, Number(e.target.value) || 4)))} /> 秒</label>
+            <span className="ml-auto text-xs text-[var(--muted)]">{H3_PRESETS[preset].label}</span>
           </div>
-          <label className="mt-4 block"><span className="label">Seedance 提示词</span><textarea className="field min-h-[35rem] resize-y leading-6" value={prompt} disabled={editLocked} onChange={e => setPrompt(e.target.value)} placeholder="主体、动作、台词、景别、运镜、光线与声音…" /></label>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <label className="sm:col-span-2"><span className="label">H3 checkpoint</span><select className="field" value={model} disabled={editLocked} onChange={event => { const next = event.target.value; setModel(next); const family = H3_CHECKPOINTS.find(item => item.id === next)?.family; if (family === 'ref2va') setPreset('ref2va'); else if (preset === 'ref2va') setPreset('fl2va-turbo-4') }}>{H3_CHECKPOINTS.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
+            <label><span className="label">Workflow preset</span><select className="field" value={preset} disabled={editLocked} onChange={event => { const next = event.target.value as H3PresetId; setPreset(next); const family = H3_PRESETS[next].modelFamily; const currentFamily = H3_CHECKPOINTS.find(item => item.id === model)?.family; if (family !== currentFamily) setModel(H3_CHECKPOINTS.find(item => item.family === family)!.id) }}>{H3_PRESET_IDS.map(id => <option key={id} value={id}>{H3_PRESETS[id].label}</option>)}</select></label>
+            <label className="flex items-end gap-2 pb-3 text-xs text-[var(--muted)]"><input type="checkbox" checked={H3_PRESETS[preset].turboMode} disabled /> Turbo mode（由 preset 控制）</label>
+            <label><span className="label">Width</span><input className="field" type="number" min={256} max={2048} step={32} value={width} disabled={editLocked} onChange={event => setWidth(Number(event.target.value) || 768)} /></label>
+            <label><span className="label">Height</span><input className="field" type="number" min={256} max={2048} step={32} value={height} disabled={editLocked} onChange={event => setHeight(Number(event.target.value) || 1280)} /></label>
+            <label><span className="label">Duration (sec)</span><input className="field" type="number" min={0.2} max={30} step={0.1} value={duration} disabled={editLocked} onChange={event => setDuration(Math.max(0.2, Math.min(30, Number(event.target.value) || 5)))} /></label>
+            <label><span className="label">Seed</span><input className="field" type="number" min={0} step={1} value={seed} disabled={editLocked} onChange={event => setSeed(Math.max(0, Math.trunc(Number(event.target.value) || 0)))} /></label>
+          </div>
+          <label className="mt-4 block"><span className="label">MiniMax H3 prompt</span><textarea className="field min-h-72 resize-y leading-6" value={prompt} disabled={editLocked} onChange={e => setPrompt(e.target.value)} placeholder="主体、动作、景别、运镜、光线与声音…" /></label>
+          <label className="mt-3 block"><span className="label">Arabic dialogue（供后续 TTS）</span><textarea className="field min-h-24 resize-y leading-6" dir="rtl" value={dialogue} disabled={editLocked} onChange={event => setDialogue(event.target.value)} placeholder="الحوار العربي…" /></label>
           <div className="mt-4">
-            <div className="label">Base64 参考素材 · 最多 9 张</div>
+            <div className="label">本地参考素材 · 最多 9 张</div>
             <div className="flex flex-wrap gap-2">
               {entities.map(entity => {
                 const selected = referenceIds.includes(entity.id)
                 return <button key={entity.id} disabled={editLocked} onClick={() => setReferenceIds(current => selected ? current.filter(id => id !== entity.id) : current.length < 9 ? [...current, entity.id] : current)} className={`flex items-center gap-2 rounded-lg border px-2 py-1.5 text-xs ${selected ? 'border-[var(--projector)] bg-[var(--projector)]/10' : 'border-[var(--line)] bg-white'}`}><img src={entity.selectedImage!.url} alt="" className="h-7 w-7 rounded object-cover" /><span>{entity.name}{entity.variant ? ` / ${entity.variant}` : ''}</span></button>
               })}
-              {!entities.length && <span className="text-xs text-[var(--muted)]">本集暂无已定稿图片，仍可纯文本生成。</span>}
+              {!entities.length && <span className="text-xs text-[var(--muted)]">本集暂无已定稿素材图。</span>}
             </div>
+            <label className="btn-secondary mt-3 inline-flex cursor-pointer"><Upload className="h-3.5 w-3.5" /> {shot.referenceImagePath ? '替换镜头参考图' : '上传镜头参考图'}<input hidden type="file" accept="image/png,image/jpeg,image/webp" disabled={editLocked} onChange={event => { const file = event.target.files?.[0]; if (file) void uploadReference(file); event.target.value = '' }} /></label>
+            {shot.referenceImagePath && <span className="ml-3 text-xs text-emerald-700">已绑定：{shot.referenceImagePath.split('/').at(-1)}</span>}
           </div>
           {shot.error && <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">{shot.error}</p>}
           <div className="mt-5 flex flex-wrap gap-2">
@@ -359,13 +389,13 @@ function ShotCard({ shot, entities, ratio, selected, locked, onToggleSelected, o
         <div className="border-t border-[var(--line)] bg-[var(--navy)] p-4 text-white xl:border-l xl:border-t-0">
           <div className="timecode mb-3 flex items-center justify-between text-[10px] text-white/45"><span>VIDEO TAKE · {ratio}</span><span>{completeVideos.length} VERSIONS</span></div>
           <div className={`flex items-center justify-center overflow-hidden rounded-xl bg-black/45 ${ratio === '9:16' ? 'mx-auto aspect-[9/16] w-full max-w-[20rem]' : 'aspect-video w-full'}`}>
-            {activeVideo?.url ? <video key={activeVideo.url} src={activeVideo.url} controls preload="metadata" className="h-full w-full object-contain" /> : shot.status === 'generating' ? <div className="text-center text-xs text-white/60"><Loader2 className="mx-auto mb-2 h-6 w-6 animate-spin text-[var(--projector)]" />Seedance 正在制作</div> : <Video className="h-10 w-10 text-white/15" />}
+            {activeVideo?.url ? <video key={activeVideo.url} src={activeVideo.url} controls preload="metadata" className="h-full w-full object-contain" /> : shot.status === 'generating' ? <div className="text-center text-xs text-white/60"><Loader2 className="mx-auto mb-2 h-6 w-6 animate-spin text-[var(--projector)]" />Local ComfyUI / H3 正在制作</div> : <Video className="h-10 w-10 text-white/15" />}
           </div>
           {completeVideos.length > 0 && <div className="mt-3 flex gap-2 overflow-x-auto">{completeVideos.map((video, index) => <button key={video.id} disabled={editLocked} onClick={() => void selectVideo(video.id)} className={`timecode rounded-lg border px-3 py-2 text-[10px] ${video.id === activeVideo?.id ? 'border-[var(--projector)] bg-[var(--projector)]/10 text-[var(--projector)]' : 'border-white/10 text-white/50'}`}>TAKE {String(index + 1).padStart(2, '0')}</button>)}</div>}
           {activeVideo && (
             <div className="mt-3 space-y-3 rounded-xl border border-white/10 bg-white/[.04] p-3 text-xs text-white/65">
               <div className="flex items-start justify-between gap-3">
-                <div><strong className="block text-white">{SEEDANCE_MODELS.find(item => item.id === activeVideo.model)?.name || activeVideo.model}</strong><span>{activeVideo.resolution} · {activeVideo.duration.toFixed(1)} 秒 · {new Date(activeVideo.createdAt).toLocaleString('zh-CN')}</span></div>
+                <div><strong className="block break-all text-white">{H3_CHECKPOINTS.find(item => item.id === activeVideo.model)?.label || activeVideo.model}</strong><span>{activeVideo.preset || 'legacy'} · {activeVideo.resolution} · seed {activeVideo.seed} · {activeVideo.duration.toFixed(1)} 秒</span><span className="block">{new Date(activeVideo.createdAt).toLocaleString('zh-CN')}</span></div>
                 <button className="btn-quiet !min-h-7 !px-1.5 !text-white/50 hover:!text-red-300" disabled={locked || shot.status === 'generating'} onClick={() => void removeVideo(activeVideo.id)} title="删除当前视频版本"><Trash2 className="h-3.5 w-3.5" /></button>
               </div>
               <div className="flex items-center gap-1" aria-label="视频版本评分">

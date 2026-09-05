@@ -4,7 +4,7 @@ const mocks = vi.hoisted(() => ({
   optimizeScriptBrief: vi.fn(),
 }))
 
-vi.mock('@/lib/providers/deepseek', () => ({
+vi.mock('@/lib/providers/local-llm', () => ({
   optimizeScriptBrief: mocks.optimizeScriptBrief,
 }))
 

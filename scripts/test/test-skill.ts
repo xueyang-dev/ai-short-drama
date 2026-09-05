@@ -4,7 +4,7 @@
  *
  * audit（默认）：离线审计 script-brief、drama-script、drama-shot-prompt 的专业合同。
  * result：对已生成的 JSON 做确定性质量检查，不调用模型。
- * live：复用当前项目的 DeepSeek 生产调用链，必须显式确认可能产生费用。
+ * live：复用当前项目的 Local LLM 生产调用链，必须显式确认可能产生费用。
  */
 
 import {
@@ -20,7 +20,7 @@ import type { EntityKind } from '../../lib/types'
 import type {
   ScriptGenerationInput,
   ShortDramaSkillQualityJudgement,
-} from '../../lib/providers/deepseek'
+} from '../../lib/providers/local-llm'
 
 const scriptPath = fileURLToPath(import.meta.url)
 const projectRoot = resolve(dirname(scriptPath), '../..')
@@ -351,7 +351,7 @@ function dramaShotAuditChecks(prompt: string): QualityCheck[] {
       id: 'shot-duration-and-splitting',
       label: '按剧情节拍切分 4–15 秒视频片段',
       passed: hasAll(prompt, ['4–15 秒', '剧情节拍', '低于 4 秒', '超过 15 秒']),
-      evidence: '检查 Seedance 片段时长与拆分规则',
+      evidence: '检查 MiniMax H3 片段时长与拆分规则',
     }),
     check({
       id: 'script-fidelity',
@@ -373,7 +373,7 @@ function dramaShotAuditChecks(prompt: string): QualityCheck[] {
     }),
     check({
       id: 'prompt-sections',
-      label: 'Seedance Prompt 包含固定专业段落',
+      label: 'MiniMax H3 Prompt 包含固定专业段落',
       passed: hasAll(prompt, ['素材引用与主体定义:', '分镜提示词:', '音色说明:', '风格与画质:', '约束条件:']),
       evidence: '检查主体绑定、镜头、声音、风格和约束段落',
     }),
@@ -804,7 +804,7 @@ function requiredString(input: Record<string, unknown>, key: string): string {
 
 async function executeLiveSkill(skill: CreationSkillName, input: Record<string, unknown>): Promise<unknown> {
   loadEnvLocal()
-  const provider = await import('../../lib/providers/deepseek')
+  const provider = await import('../../lib/providers/local-llm')
   if (skill === 'script-brief') {
     return provider.optimizeScriptBrief({
       brief: requiredString(input, 'brief'),
@@ -909,7 +909,7 @@ async function executeWorkflowCase(
   result: WorkflowResult
 }> {
   loadEnvLocal()
-  const provider = await import('../../lib/providers/deepseek')
+  const provider = await import('../../lib/providers/local-llm')
   const timings: WorkflowTiming[] = resumeSourceDir
     ? readCheckpointTimings(resumeSourceDir).filter(timing => timing.step === 'script-brief')
     : []
@@ -1042,7 +1042,7 @@ async function resumeWorkflowJudge(testCase: WorkflowCase, outputDir: string): P
   result: WorkflowResult
 }> {
   loadEnvLocal()
-  const provider = await import('../../lib/providers/deepseek')
+  const provider = await import('../../lib/providers/local-llm')
   const scriptBriefResult = readJsonObject(resolve(outputDir, 'script-brief-result.json'))
   const dramaScriptResult = readJsonObject(resolve(outputDir, 'drama-script-result.json'))
   const dramaShotPromptResult = readJsonObject(resolve(outputDir, 'drama-shot-prompt-result.json'))
@@ -1116,7 +1116,7 @@ function showHelp(): never {
 模式:
   audit（默认）  离线审计创作 Skill 的专业合同，不调用 AI
   result          对已有模型 JSON 做确定性质量评分
-  live            复用当前 DeepSeek 生产调用链，再对结果评分
+  live            复用当前 Local LLM 生产调用链，再对结果评分
   workflow        依次真实调用三个 Skill，并增加 AI 专业评审
 
 选项:

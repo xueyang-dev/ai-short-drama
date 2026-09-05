@@ -12,10 +12,10 @@ describe('requestJson diagnostics', () => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
       success: false,
-      error: 'DeepSeek 返回内容为空',
+      error: 'Local LLM 返回内容为空',
       diagnostics: {
         diagnosticId: 'debug-client-1',
-        provider: 'deepseek',
+        provider: 'local-llm',
         phase: 'empty_content',
         finishReason: 'length',
       },
@@ -24,14 +24,14 @@ describe('requestJson diagnostics', () => {
     await expect(requestJson('/api/script-brief', {
       method: 'POST',
       body: JSON.stringify({ brief: '不应出现在 Console 的故事正文' }),
-    })).rejects.toThrow('DeepSeek 返回内容为空')
+    })).rejects.toThrow('Local LLM 返回内容为空')
 
     expect(consoleDebug).toHaveBeenCalledWith(
-      '[雪风AI短剧工坊][API] 请求开始',
+      '[Arabic Short Drama Studio][API] 请求开始',
       { method: 'POST', url: '/api/script-brief' },
     )
     expect(consoleError).toHaveBeenCalledWith(
-      '[雪风AI短剧工坊][API] 请求失败',
+      '[Arabic Short Drama Studio][API] 请求失败',
       expect.objectContaining({
         status: 500,
         diagnostics: expect.objectContaining({

@@ -13,7 +13,7 @@ vi.mock('@/lib/db', () => ({
   getProjectBundle: mocks.getProjectBundle,
   replaceStoryboard: mocks.replaceStoryboard,
 }))
-vi.mock('@/lib/providers/deepseek', () => ({ generateStoryboard: mocks.generateStoryboard }))
+vi.mock('@/lib/providers/local-llm', () => ({ generateStoryboard: mocks.generateStoryboard }))
 
 import { POST } from './route'
 

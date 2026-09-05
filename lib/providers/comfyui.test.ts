@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildH3ApiWorkflow } from './comfyui'
+import { buildH3ApiWorkflow, parseComfyHistory } from './comfyui'
 
 const request = {
   referenceImagePaths: ['uploads/reference.png'],
@@ -24,6 +24,7 @@ describe('Local ComfyUI H3 API workflow', () => {
     expect(workflow['5'].inputs.steps).toBe(4)
     expect(workflow['6'].inputs.noise_seed).toBe(123456)
     expect(workflow['24'].inputs.lora_name).toContain('turbo_4step')
+    expect(workflow['24'].inputs.lora_name).toContain('MiniMax-H3\\')
     expect(workflow['100']).toEqual({ class_type: 'LoadImage', inputs: { image: 'ai-short-drama/reference.png' } })
   })
 
@@ -50,5 +51,14 @@ describe('Local ComfyUI H3 API workflow', () => {
     expect(workflow['1'].inputs.ref2va_model).toContain('ref2va')
     expect(workflow['2'].inputs.mode).toBe('reference')
     expect(workflow['14'].inputs).toMatchObject({ image_count: 2, image_1: ['100', 0], image_2: ['101', 0] })
+  })
+
+  it('parses MP4 descriptors returned under the current SaveVideo images key', () => {
+    expect(parseComfyHistory('prompt-1', {
+      'prompt-1': {
+        status: { status_str: 'success', completed: true },
+        outputs: { '12': { images: [{ filename: 'take.mp4', subfolder: 'ai-short-drama', type: 'output' }] } },
+      },
+    })).toEqual({ state: 'succeeded', file: { filename: 'take.mp4', subfolder: 'ai-short-drama', type: 'output' } })
   })
 })

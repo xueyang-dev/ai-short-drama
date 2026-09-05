@@ -6,7 +6,7 @@ import {
   generateStoryboard,
   judgeShortDramaSkillQuality,
   optimizeScriptBrief,
-} from './deepseek'
+} from './local-llm'
 
 function episodeContent(locationPrefix: string, sceneCount = 10): string {
   const times = ['晨', '日', '昏', '夜']
@@ -39,7 +39,7 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-describe('DeepSeek provider', () => {
+describe('Local LLM provider', () => {
   it('在请求模型前拒绝单次创作超过 10 集', async () => {
     const fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)
@@ -57,7 +57,7 @@ describe('DeepSeek provider', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('按当前 DeepSeek 模型的最大输出请求，并接受超过旧限制的需求文本', async () => {
+  it('按当前 Local LLM 模型的最大输出请求，并接受超过旧限制的需求文本', async () => {
     const optimizedBrief = `【主角设定】\n${'完整设定'.repeat(15_000)}`
     const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(JSON.stringify({
       choices: [{
@@ -169,7 +169,7 @@ describe('DeepSeek provider', () => {
       tips: ['强化集末钩子'],
     })
     const stream = [
-      `data: ${JSON.stringify({ id: 'deepseek-response-1', choices: [{ delta: { reasoning_content: '分析中' } }] })}`,
+      `data: ${JSON.stringify({ id: 'local-llm-response-1', choices: [{ delta: { reasoning_content: '分析中' } }] })}`,
       `data: ${JSON.stringify({ choices: [{ delta: { content: optimized.slice(0, 12) } }] })}`,
       `data: ${JSON.stringify({ choices: [{ delta: { content: optimized.slice(12) }, finish_reason: 'stop' }] })}`,
       'data: [DONE]',
@@ -200,7 +200,7 @@ describe('DeepSeek provider', () => {
       tips: [],
     })
     const stream = [
-      `data: ${JSON.stringify({ id: 'deepseek-response-tolerant', choices: [{ delta: { content: optimized.slice(0, 10) } }] })}`,
+      `data: ${JSON.stringify({ id: 'local-llm-response-tolerant', choices: [{ delta: { content: optimized.slice(0, 10) } }] })}`,
       'data: provider-heartbeat',
       `data: ${JSON.stringify({ choices: [{ delta: { content: optimized.slice(10) }, finish_reason: 'stop' }] })}`,
       'data: [DONE]',
@@ -222,7 +222,7 @@ describe('DeepSeek provider', () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1)
     expect(consoleWarn).toHaveBeenCalledWith(
-      '[雪风AI短剧工坊][DeepSeek] 已忽略异常 SSE 事件',
+      '[Arabic Short Drama Studio][Local LLM] 已忽略异常 SSE 事件',
       expect.objectContaining({ malformedStreamEventCount: 1 }),
     )
   })
@@ -230,7 +230,7 @@ describe('DeepSeek provider', () => {
   it('首次正式内容为空时强化 JSON 指令并自动重试', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     const emptyStream = [
-      `data: ${JSON.stringify({ id: 'deepseek-response-empty-first', choices: [{ delta: { reasoning_content: '仅有推理' } }] })}`,
+      `data: ${JSON.stringify({ id: 'local-llm-response-empty-first', choices: [{ delta: { reasoning_content: '仅有推理' } }] })}`,
       `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: 'stop' }] })}`,
       'data: [DONE]',
       '',
@@ -301,7 +301,7 @@ describe('DeepSeek provider', () => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     const stream = [
-      `data: ${JSON.stringify({ id: 'deepseek-response-empty', choices: [{ delta: { reasoning_content: '仅有推理' } }] })}`,
+      `data: ${JSON.stringify({ id: 'local-llm-response-empty', choices: [{ delta: { reasoning_content: '仅有推理' } }] })}`,
       `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: 'length' }] })}`,
       'data: [DONE]',
       '',
@@ -326,16 +326,16 @@ describe('DeepSeek provider', () => {
     }
 
     expect(failure).toBeInstanceOf(DiagnosticError)
-    expect((failure as Error).message).toBe('DeepSeek 连续两次返回内容为空')
+    expect((failure as Error).message).toBe('Local LLM 连续两次返回内容为空')
     expect((failure as DiagnosticError).diagnostics).toMatchObject({
-      provider: 'deepseek',
+      provider: 'local-llm',
       model: LOCAL_LLM_DEFAULT_MODEL,
       phase: 'empty_content',
       attempt: 2,
       maxAttempts: 2,
       httpStatus: 200,
       providerRequestId: 'provider-request-empty',
-      providerResponseId: 'deepseek-response-empty',
+      providerResponseId: 'local-llm-response-empty',
       choicesCount: 1,
       finishReason: 'length',
       contentLength: 0,
@@ -417,7 +417,7 @@ describe('DeepSeek provider', () => {
     expect(result.props[0]?.episodes).toEqual([5])
   })
 
-  it('单集不足默认场数时自动要求 DeepSeek 完整重写一次', async () => {
+  it('单集不足默认场数时自动要求 Local LLM 完整重写一次', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(generatedScriptResponse(episodeContent('短场', 3)))
       .mockResolvedValueOnce(generatedScriptResponse(episodeContent('完整场')))
@@ -565,7 +565,7 @@ describe('DeepSeek provider', () => {
     expect(userPrompt).not.toContain('音频参考')
   })
 
-  it('真实 Skill 质量评审复用生产 DeepSeek 参数并返回结构化评分', async () => {
+  it('真实 Skill 质量评审复用生产 Local LLM 参数并返回结构化评分', async () => {
     const judgement = {
       skills: {
         scriptBrief: { score: 88, strengths: ['约束完整'], weaknesses: ['场景略泛'], evidence: ['保留旧怀表'] },

@@ -10,7 +10,7 @@ import {
   rewriteGeneratedScript,
   updateEpisode,
 } from '@/lib/db'
-import { generateScript } from '@/lib/providers/deepseek'
+import { generateScript } from '@/lib/providers/local-llm'
 import { fail, ok } from '@/lib/api'
 import { MAX_SCRIPT_EPISODES_PER_REQUEST } from '@/lib/model-config'
 

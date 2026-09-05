@@ -134,7 +134,7 @@ async function uploadReference(relativePath: string): Promise<string> {
 
 function findVideo(entry: ComfyHistoryEntry): ComfyOutputFile | null {
   for (const output of Object.values(entry.outputs ?? {})) {
-    for (const key of ['videos', 'gifs', 'files']) {
+    for (const key of ['videos', 'images', 'gifs', 'files']) {
       const files = output[key]
       if (Array.isArray(files) && files.length > 0) return files[0] as ComfyOutputFile
     }
@@ -144,6 +144,20 @@ function findVideo(entry: ComfyHistoryEntry): ComfyOutputFile | null {
 
 function historyError(entry: ComfyHistoryEntry): string {
   return JSON.stringify(entry.status?.messages ?? []).slice(0, 1000) || 'ComfyUI 任务失败'
+}
+
+export function parseComfyHistory(
+  jobId: string,
+  history: Record<string, ComfyHistoryEntry>,
+): { state: 'running' | 'succeeded' | 'failed'; file?: ComfyOutputFile; error?: string } {
+  const entry = history[jobId]
+  if (!entry) return { state: 'running' }
+  const file = findVideo(entry)
+  if (file) return { state: 'succeeded', file }
+  if (entry.status?.status_str === 'error') return { state: 'failed', error: historyError(entry) }
+  return entry.status?.completed
+    ? { state: 'failed', error: 'ComfyUI 已完成但没有视频输出' }
+    : { state: 'running' }
 }
 
 export class LocalComfyUIProvider implements VideoGenerationProvider {
@@ -209,10 +223,9 @@ export class LocalComfyUIProvider implements VideoGenerationProvider {
   async getJob(jobId: string): Promise<ProviderJob<VideoGenerationOutput>> {
     const response = await comfyFetch(`/history/${encodeURIComponent(jobId)}`)
     const history = await response.json() as Record<string, ComfyHistoryEntry>
-    const entry = history[jobId]
-    if (!entry) return { id: jobId, state: 'running' }
-    const video = findVideo(entry)
-    if (video) {
+    const result = parseComfyHistory(jobId, history)
+    if (result.state === 'succeeded' && result.file) {
+      const video = result.file
       const viewUrl = new URL('/view', baseUrl())
       viewUrl.searchParams.set('filename', video.filename)
       viewUrl.searchParams.set('subfolder', video.subfolder ?? '')
@@ -220,8 +233,7 @@ export class LocalComfyUIProvider implements VideoGenerationProvider {
       const mediaPath = await saveRemoteFile(viewUrl.toString(), 'videos', 'mp4')
       return { id: jobId, state: 'succeeded', progress: 1, output: { path: mediaPath, mimeType: 'video/mp4' } }
     }
-    if (entry.status?.status_str === 'error') return { id: jobId, state: 'failed', error: historyError(entry) }
-    return { id: jobId, state: entry.status?.completed ? 'failed' : 'running', error: entry.status?.completed ? 'ComfyUI 已完成但没有视频输出' : undefined }
+    return { id: jobId, state: result.state, error: result.error }
   }
 }
 

@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { createShot, getProjectBundle, replaceStoryboard } from '@/lib/db'
-import { generateStoryboard } from '@/lib/providers/deepseek'
+import { generateStoryboard } from '@/lib/providers/local-llm'
 import { resolveStoryboardReferenceEntities } from '@/lib/storyboard-references'
 import { fail, ok } from '@/lib/api'
 

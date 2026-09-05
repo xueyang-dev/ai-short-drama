@@ -26,7 +26,7 @@ vi.mock('@/lib/db', () => ({
   updateEpisode: mocks.updateEpisode,
 }))
 
-vi.mock('@/lib/providers/deepseek', () => ({
+vi.mock('@/lib/providers/local-llm', () => ({
   generateScript: mocks.generateScript,
 }))
 

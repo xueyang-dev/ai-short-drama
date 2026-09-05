@@ -1,8 +1,8 @@
 {
-  "name": "xuefeng-ai-short-drama-studio",
+  "name": "arabic-short-drama-studio",
   "version": "2.0.0",
   "private": true,
-  "description": "雪风AI短剧工坊：剧本、角色、场景、道具、分镜与剪辑",
+  "description": "Windows-first local Arabic short drama production studio",
   "engines": {
     "node": ">=22 <24"
   },

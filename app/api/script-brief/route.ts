@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { fail, ok } from '@/lib/api'
-import { optimizeScriptBrief } from '@/lib/providers/deepseek'
+import { optimizeScriptBrief } from '@/lib/providers/local-llm'
 
 export const dynamic = 'force-dynamic'
 

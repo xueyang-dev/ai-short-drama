@@ -1,7 +1,7 @@
 export async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   const method = init?.method?.toUpperCase() || 'GET'
   const startedAt = performance.now()
-  console.debug('[雪风AI短剧工坊][API] 请求开始', { method, url })
+  console.debug('[Arabic Short Drama Studio][API] 请求开始', { method, url })
 
   let response: Response
   try {
@@ -12,7 +12,7 @@ export async function requestJson<T>(url: string, init?: RequestInit): Promise<T
         : init?.headers,
     })
   } catch (error) {
-    console.error('[雪风AI短剧工坊][API] 网络请求失败', {
+    console.error('[Arabic Short Drama Studio][API] 网络请求失败', {
       method,
       url,
       durationMs: Math.round(performance.now() - startedAt),
@@ -27,7 +27,7 @@ export async function requestJson<T>(url: string, init?: RequestInit): Promise<T
   try {
     payload = JSON.parse(raw) as typeof payload
   } catch {
-    console.error('[雪风AI短剧工坊][API] 响应不是有效 JSON', {
+    console.error('[Arabic Short Drama Studio][API] 响应不是有效 JSON', {
       method,
       url,
       status: response.status,
@@ -41,7 +41,7 @@ export async function requestJson<T>(url: string, init?: RequestInit): Promise<T
 
   if (!response.ok || !payload.success) {
     const message = payload.error || `请求失败 (${response.status})`
-    console.error('[雪风AI短剧工坊][API] 请求失败', {
+    console.error('[Arabic Short Drama Studio][API] 请求失败', {
       method,
       url,
       status: response.status,
@@ -52,7 +52,7 @@ export async function requestJson<T>(url: string, init?: RequestInit): Promise<T
     throw new Error(message)
   }
 
-  console.debug('[雪风AI短剧工坊][API] 请求完成', {
+  console.debug('[Arabic Short Drama Studio][API] 请求完成', {
     method,
     url,
     status: response.status,

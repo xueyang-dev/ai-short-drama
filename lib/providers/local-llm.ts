@@ -93,7 +93,7 @@ const shortDramaSkillQualitySchema = z.object({
 
 export type ShortDramaSkillQualityJudgement = z.output<typeof shortDramaSkillQualitySchema>
 
-// DeepSeek 官方说明 JSON Output 偶尔会返回空 content；只对可恢复的响应问题限次重试。
+// Local LLM 官方说明 JSON Output 偶尔会返回空 content；只对可恢复的响应问题限次重试。
 const DEEPSEEK_JSON_MAX_ATTEMPTS = 2
 const DEEPSEEK_JSON_RETRY_INSTRUCTION = `【JSON 输出重试要求】
 上一次调用没有产生可用的正式答案。本次必须完成正式回答，并且只在 content 中输出一个完整 JSON 对象；不要只输出思考过程，不要解释，不要使用 Markdown 代码块。`
@@ -106,7 +106,7 @@ function extractJson(text: string): unknown {
     const start = trimmed.indexOf('{')
     const end = trimmed.lastIndexOf('}')
     if (start >= 0 && end > start) return JSON.parse(trimmed.slice(start, end + 1))
-    throw new Error('DeepSeek 未返回有效 JSON')
+    throw new Error('Local LLM 未返回有效 JSON')
   }
 }
 
@@ -134,7 +134,7 @@ function describeZodIssues(error: z.ZodError): string {
   }).join('；')
 }
 
-async function callDeepSeekJson<Schema extends z.ZodTypeAny>(
+async function callLocalLlmJson<Schema extends z.ZodTypeAny>(
   systemPrompt: string,
   userPrompt: string,
   schema: Schema,
@@ -147,7 +147,7 @@ async function callDeepSeekJson<Schema extends z.ZodTypeAny>(
   const maxTokens = Number.isInteger(configuredMaxTokens) && configuredMaxTokens > 0
     ? configuredMaxTokens
     : LOCAL_LLM_DEFAULT_MAX_OUTPUT_TOKENS
-  const diagnosticBase: DeepSeekDiagnosticBase = {
+  const diagnosticBase: LocalLlmDiagnosticBase = {
     diagnosticId: crypto.randomUUID(),
     model,
     startedAt: Date.now(),
@@ -178,7 +178,7 @@ async function callDeepSeekJson<Schema extends z.ZodTypeAny>(
         }),
         signal: controller.signal,
       })
-      const responseMetadata: DeepSeekResponseMetadata = {
+      const responseMetadata: LocalLlmResponseMetadata = {
         attempt,
         maxAttempts: DEEPSEEK_JSON_MAX_ATTEMPTS,
         httpStatus: response.status,
@@ -197,8 +197,8 @@ async function callDeepSeekJson<Schema extends z.ZodTypeAny>(
         } catch {
           // 非 JSON 错误响应仍由下方安全摘要记录。
         }
-        throw createDeepSeekError(
-          `DeepSeek API 错误 (${response.status})${providerMessage ? `：${providerMessage}` : ''}`,
+        throw createLocalLlmError(
+          `Local LLM API 错误 (${response.status})${providerMessage ? `：${providerMessage}` : ''}`,
           diagnosticBase,
           'http',
           { ...responseMetadata, rawResponseLength: raw.length, errorCode },
@@ -206,18 +206,18 @@ async function callDeepSeekJson<Schema extends z.ZodTypeAny>(
         )
       }
 
-      let collected: DeepSeekCollectedResponse
+      let collected: LocalLlmCollectedResponse
       try {
         collected = response.headers.get('content-type')?.includes('text/event-stream')
           ? await collectStreamResponse(response)
           : collectJsonResponse(await response.text())
       } catch (error) {
         if (attempt < DEEPSEEK_JSON_MAX_ATTEMPTS) {
-          logDeepSeekRetry(diagnosticBase, 'response_parse', responseMetadata)
+          logLocalLlmRetry(diagnosticBase, 'response_parse', responseMetadata)
           continue
         }
-        throw createDeepSeekError(
-          'DeepSeek 响应无法解析',
+        throw createLocalLlmError(
+          'Local LLM 响应无法解析',
           diagnosticBase,
           'response_parse',
           responseMetadata,
@@ -228,9 +228,9 @@ async function callDeepSeekJson<Schema extends z.ZodTypeAny>(
 
       const metadata = { ...responseMetadata, ...collected }
       if ((collected.malformedStreamEventCount ?? 0) > 0) {
-        console.warn('[雪风AI短剧工坊][DeepSeek] 已忽略异常 SSE 事件', compactDiagnostics({
+        console.warn('[Arabic Short Drama Studio][Local LLM] 已忽略异常 SSE 事件', compactDiagnostics({
           diagnosticId: diagnosticBase.diagnosticId,
-          provider: 'deepseek',
+          provider: 'local-llm',
           model,
           attempt,
           malformedStreamEventCount: collected.malformedStreamEventCount,
@@ -239,8 +239,8 @@ async function callDeepSeekJson<Schema extends z.ZodTypeAny>(
         }))
       }
       if (collected.providerError) {
-        throw createDeepSeekError(
-          collected.providerError.message || 'DeepSeek 调用失败',
+        throw createLocalLlmError(
+          collected.providerError.message || 'Local LLM 调用失败',
           diagnosticBase,
           'provider_error',
           { ...metadata, errorCode: collected.providerError.code },
@@ -248,11 +248,11 @@ async function callDeepSeekJson<Schema extends z.ZodTypeAny>(
       }
       if (!collected.content.trim()) {
         if (attempt < DEEPSEEK_JSON_MAX_ATTEMPTS) {
-          logDeepSeekRetry(diagnosticBase, 'empty_content', metadata)
+          logLocalLlmRetry(diagnosticBase, 'empty_content', metadata)
           continue
         }
-        throw createDeepSeekError(
-          'DeepSeek 连续两次返回内容为空',
+        throw createLocalLlmError(
+          'Local LLM 连续两次返回内容为空',
           diagnosticBase,
           'empty_content',
           metadata,
@@ -263,8 +263,8 @@ async function callDeepSeekJson<Schema extends z.ZodTypeAny>(
       try {
         extracted = extractJson(collected.content)
       } catch (error) {
-        throw createDeepSeekError(
-          'DeepSeek 未返回有效 JSON',
+        throw createLocalLlmError(
+          'Local LLM 未返回有效 JSON',
           diagnosticBase,
           'json_parse',
           metadata,
@@ -276,8 +276,8 @@ async function callDeepSeekJson<Schema extends z.ZodTypeAny>(
         return schema.parse(normalize ? normalize(extracted) : extracted)
       } catch (error) {
         if (!(error instanceof z.ZodError)) throw error
-        throw createDeepSeekError(
-          `DeepSeek 返回结构不符合要求：${describeZodIssues(error) || '结构错误'}`,
+        throw createLocalLlmError(
+          `Local LLM 返回结构不符合要求：${describeZodIssues(error) || '结构错误'}`,
           diagnosticBase,
           'schema_validation',
           metadata,
@@ -286,14 +286,14 @@ async function callDeepSeekJson<Schema extends z.ZodTypeAny>(
         )
       }
     }
-    throw new Error('DeepSeek JSON 重试状态异常')
+    throw new Error('Local LLM JSON 重试状态异常')
   } catch (error) {
     if (error instanceof DiagnosticError) throw error
     if (error instanceof Error && error.name === 'AbortError') {
-      throw createDeepSeekError('DeepSeek 请求超时', diagnosticBase, 'timeout', {}, undefined, error)
+      throw createLocalLlmError('Local LLM 请求超时', diagnosticBase, 'timeout', {}, undefined, error)
     }
-    throw createDeepSeekError(
-      `DeepSeek 请求失败：${error instanceof Error ? error.message : '未知错误'}`,
+    throw createLocalLlmError(
+      `Local LLM 请求失败：${error instanceof Error ? error.message : '未知错误'}`,
       diagnosticBase,
       'network',
       {},
@@ -324,7 +324,7 @@ export async function optimizeScriptBrief(input: {
 用户原始想法或素材：
 ${input.brief}`
 
-  return callDeepSeekJson(systemPrompt, userPrompt, optimizedScriptBriefSchema)
+  return callLocalLlmJson(systemPrompt, userPrompt, optimizedScriptBriefSchema)
 }
 
 export interface ScriptGenerationInput {
@@ -343,7 +343,7 @@ export interface ScriptGenerationInput {
   isFinale?: boolean
 }
 
-type DeepSeekFailurePhase =
+type LocalLlmFailurePhase =
   | 'network'
   | 'timeout'
   | 'http'
@@ -353,13 +353,13 @@ type DeepSeekFailurePhase =
   | 'json_parse'
   | 'schema_validation'
 
-interface DeepSeekDiagnosticBase {
+interface LocalLlmDiagnosticBase {
   diagnosticId: string
   model: string
   startedAt: number
 }
 
-interface DeepSeekResponseMetadata {
+interface LocalLlmResponseMetadata {
   attempt?: number
   maxAttempts?: number
   httpStatus?: number
@@ -376,7 +376,7 @@ interface DeepSeekResponseMetadata {
   errorCode?: string
 }
 
-interface DeepSeekCollectedResponse extends DeepSeekResponseMetadata {
+interface LocalLlmCollectedResponse extends LocalLlmResponseMetadata {
   content: string
   reasoningContent: string
   providerError?: { message?: string; code?: string }
@@ -395,14 +395,14 @@ function sanitizeResponsePreview(value: string): string {
     .replace(/\bsk-[a-z0-9_-]{12,}\b/gi, '[api-key omitted]')
 }
 
-function logDeepSeekRetry(
-  base: DeepSeekDiagnosticBase,
+function logLocalLlmRetry(
+  base: LocalLlmDiagnosticBase,
   phase: 'response_parse' | 'empty_content',
-  metadata: DeepSeekResponseMetadata,
+  metadata: LocalLlmResponseMetadata,
 ): void {
-  console.warn('[雪风AI短剧工坊][DeepSeek] 响应异常，自动重试', compactDiagnostics({
+  console.warn('[Arabic Short Drama Studio][Local LLM] 响应异常，自动重试', compactDiagnostics({
     diagnosticId: base.diagnosticId,
-    provider: 'deepseek',
+    provider: 'local-llm',
     model: base.model,
     phase,
     durationMs: Date.now() - base.startedAt,
@@ -422,17 +422,17 @@ function logDeepSeekRetry(
   }))
 }
 
-function createDeepSeekError(
+function createLocalLlmError(
   message: string,
-  base: DeepSeekDiagnosticBase,
-  phase: DeepSeekFailurePhase,
-  metadata: DeepSeekResponseMetadata = {},
+  base: LocalLlmDiagnosticBase,
+  phase: LocalLlmFailurePhase,
+  metadata: LocalLlmResponseMetadata = {},
   responsePreview?: string,
   cause?: unknown,
 ): DiagnosticError {
   const diagnostics = compactDiagnostics({
     diagnosticId: base.diagnosticId,
-    provider: 'deepseek',
+    provider: 'local-llm',
     model: base.model,
     phase,
     durationMs: Date.now() - base.startedAt,
@@ -451,7 +451,7 @@ function createDeepSeekError(
     malformedStreamEventCount: metadata.malformedStreamEventCount,
     errorCode: metadata.errorCode,
   })
-  console.error('[雪风AI短剧工坊][DeepSeek] 调用失败', {
+  console.error('[Arabic Short Drama Studio][Local LLM] 调用失败', {
     message,
     ...diagnostics,
     ...(responsePreview ? { responsePreview: sanitizeResponsePreview(responsePreview) } : {}),
@@ -476,7 +476,7 @@ function readString(value: unknown): string {
   return typeof value === 'string' ? value : ''
 }
 
-function collectJsonResponse(raw: string): DeepSeekCollectedResponse {
+function collectJsonResponse(raw: string): LocalLlmCollectedResponse {
   const payload = asRecord(JSON.parse(raw)) ?? {}
   const choices = Array.isArray(payload.choices) ? payload.choices : []
   const firstChoice = asRecord(choices[0])
@@ -501,8 +501,8 @@ function collectJsonResponse(raw: string): DeepSeekCollectedResponse {
   }
 }
 
-async function collectStreamResponse(response: Response): Promise<DeepSeekCollectedResponse> {
-  if (!response.body) throw new Error('DeepSeek 流式响应没有 body')
+async function collectStreamResponse(response: Response): Promise<LocalLlmCollectedResponse> {
+  if (!response.body) throw new Error('Local LLM 流式响应没有 body')
 
   const reader = response.body.getReader()
   const decoder = new TextDecoder()
@@ -515,7 +515,7 @@ async function collectStreamResponse(response: Response): Promise<DeepSeekCollec
   let streamChunkCount = 0
   let choicesCount = 0
   let malformedStreamEventCount = 0
-  let providerError: DeepSeekCollectedResponse['providerError']
+  let providerError: LocalLlmCollectedResponse['providerError']
 
   const consumeLine = (line: string) => {
     const trimmed = line.trim()
@@ -741,7 +741,7 @@ ${sceneCountVerification}
 ${input.brief}
 ${input.instruction?.trim() ? `\n【本次${mode === 'rewrite' ? '重写' : '续写'}指导】\n${input.instruction.trim()}\n` : ''}
 ${existingScript ? `\n【全部已有剧本内容】\n${existingScript}` : ''}`
-  let generated = await callDeepSeekJson(systemPrompt, userPrompt, generatedScriptSchema, normalizeGeneratedScriptPayload)
+  let generated = await callLocalLlmJson(systemPrompt, userPrompt, generatedScriptSchema, normalizeGeneratedScriptPayload)
   if (generated.episodes.length !== input.episodeCount) {
     throw new Error(`Skill 返回 ${generated.episodes.length} 集，要求为 ${input.episodeCount} 集`)
   }
@@ -754,7 +754,7 @@ ${sceneIssues.map(issue => `- ${issue}`).join('\n')}
 - 不得只补场号或把同一连续场景拆开凑数；每一场都要有真实的地点/时间切换和完整戏剧作用。
 - 先重做目标数量的场次台账，再完整重写本集；输出前机械计数合法场景标注，并确认最后场号与目标数量一致。
 - 重新输出完整 JSON，不要解释修改过程。`
-    generated = await callDeepSeekJson(systemPrompt, correctionPrompt, generatedScriptSchema, normalizeGeneratedScriptPayload)
+    generated = await callLocalLlmJson(systemPrompt, correctionPrompt, generatedScriptSchema, normalizeGeneratedScriptPayload)
     if (generated.episodes.length !== input.episodeCount) {
       throw new Error(`Skill 纠正后返回 ${generated.episodes.length} 集，要求为 ${input.episodeCount} 集`)
     }
@@ -838,7 +838,7 @@ ${entityText || '暂无素材'}
 
 本集剧本：
 ${input.episodeContent}`
-  const generated = await callDeepSeekJson(systemPrompt, userPrompt, generatedStoryboardSchema)
+  const generated = await callLocalLlmJson(systemPrompt, userPrompt, generatedStoryboardSchema)
   return {
     shots: generated.shots
       .sort((a, b) => a.shotOrder - b.shotOrder)
@@ -853,7 +853,7 @@ ${input.episodeContent}`
 
 /**
  * 开发期真实 Skill 评测使用的 AI 评审。复用与生产文本调用完全相同的
- * DeepSeek JSON、思考、流式接收和最大输出参数，不参与产品运行时流程。
+ * Local LLM JSON、思考、流式接收和最大输出参数，不参与产品运行时流程。
  */
 export async function judgeShortDramaSkillQuality(input: {
   caseDescription: string
@@ -868,7 +868,7 @@ export async function judgeShortDramaSkillQuality(input: {
 1. script-brief：用户硬约束是否完整保留，人物目标、阻力、失败代价、因果链、爽点升级和关键场景是否具体且可执行，是否越权写成剧本。
 2. drama-script：首集钩子是否及时，压迫与反击是否匹配，每场是否产生行动或信息变化，台词是否推进冲突，人物动机和证据链是否连贯，正文是否可见、可听、可拍摄，角色/空镜场景/道具资产是否忠于正文且相互解耦。
 3. drama-shot-prompt：是否完整覆盖剧本且没有添加剧情，4–15 秒切分是否符合自然表演，镜头语言、动作起止、空间关系和声音是否可执行，参考资产是否精确绑定，跨 shot 连续性是否稳定。
-4. 整体链路：上游信息是否在下游保真传递，最终结果是否达到可继续生成参考图和 Seedance 视频的标准。
+4. 整体链路：上游信息是否在下游保真传递，最终结果是否达到可绑定本地参考图并生成 MiniMax H3 视频的标准。
 
 阶段输入边界：script-brief 只接收原始创作想法、剧名、题材、视觉风格和比例；当前批次的集数、场次、反击止步点等 scriptInstruction 会由调用方绕过 brief，直接与优化后的 brief 一起传给 drama-script。不要因为 script-brief 没有重复它从未接收的 scriptInstruction 而扣分；只检查这项约束是否在 drama-script 及下游实际落实。
 
@@ -907,5 +907,5 @@ ${JSON.stringify(input.dramaScriptResult)}
 ${JSON.stringify(input.dramaShotPromptResult)}
 
 请分别评价三个 Skill，并给出整条工作流的总体结论。`
-  return callDeepSeekJson(systemPrompt, userPrompt, shortDramaSkillQualitySchema)
+  return callLocalLlmJson(systemPrompt, userPrompt, shortDramaSkillQualitySchema)
 }

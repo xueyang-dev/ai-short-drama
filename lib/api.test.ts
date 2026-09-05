@@ -4,19 +4,19 @@ import { DiagnosticError } from './diagnostic-error'
 
 describe('API diagnostics', () => {
   it('只把显式标记为公开的诊断元数据返回客户端', async () => {
-    const response = fail(new DiagnosticError('DeepSeek 返回内容为空', {
+    const response = fail(new DiagnosticError('Local LLM 返回内容为空', {
       diagnosticId: 'debug-1',
-      provider: 'deepseek',
+      provider: 'local-llm',
       phase: 'empty_content',
       contentLength: 0,
     }), 500)
 
     expect(await response.json()).toEqual({
       success: false,
-      error: 'DeepSeek 返回内容为空',
+      error: 'Local LLM 返回内容为空',
       diagnostics: {
         diagnosticId: 'debug-1',
-        provider: 'deepseek',
+        provider: 'local-llm',
         phase: 'empty_content',
         contentLength: 0,
       },

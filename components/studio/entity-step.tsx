@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { ImagePlus, Loader2, Maximize2, Plus, RefreshCw, Sparkles, Trash2, Upload, X } from 'lucide-react'
+import { ImagePlus, Loader2, Maximize2, Plus, Trash2, Upload, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { confirmToast } from '@/components/confirm-toast'
 import { ImageLightbox } from '@/components/image-lightbox'
@@ -25,10 +25,8 @@ export function EntityStep({ kind, bundle, refresh }: Props) {
   const config = CONFIG[kind]
   const entities = useMemo(() => bundle.entities.filter(entity => entity.kind === kind), [bundle.entities, kind])
   const [showAdd, setShowAdd] = useState(false)
-  const [threeView, setThreeView] = useState(kind !== 'scene')
   const workingIdsRef = useRef(new Set<string>())
   const [workingIds, setWorkingIds] = useState<Set<string>>(() => new Set())
-  const [batching, setBatching] = useState(false)
   const [form, setForm] = useState({ name: '', variant: '', description: '', episodes: '', category: 'item' })
 
   useEffect(() => {
@@ -103,51 +101,6 @@ export function EntityStep({ kind, bundle, refresh }: Props) {
     }
   }
 
-  const generate = async (entity: Entity, referenceCurrent = false, silent = false, refreshAfter = true) => {
-    if (workingIdsRef.current.has(entity.id)) return
-    setEntityWorking(entity.id, true)
-    try {
-      await requestJson(`/api/entities/${entity.id}/image`, {
-        method: 'POST',
-        body: JSON.stringify({ action: 'generate', referenceCurrent, threeView }),
-      })
-      if (!silent) toast.success('Seedream 图片已保存到本地')
-      if (refreshAfter) await refresh(true)
-    } catch (error) {
-      if (!silent) toast.error(error instanceof Error ? error.message : '生图失败')
-      throw error
-    } finally {
-      setEntityWorking(entity.id, false)
-    }
-  }
-
-  const batchGenerate = async () => {
-    const missingImages = entities.filter(entity => !entity.selectedImage)
-    if (!missingImages.length) return toast.info('所有素材都已有选定图片')
-    const pending = missingImages.filter(entity => !workingIdsRef.current.has(entity.id))
-    if (!pending.length) return toast.info('缺图素材均正在生成中')
-    if (!await confirmToast({
-      title: `批量生成 ${pending.length} 个素材？`,
-      description: '任务将并行调用 Seedream 生成图片，期间请保持应用运行。',
-      confirmLabel: '开始生成',
-      tone: 'warning',
-    })) return
-    setBatching(true)
-    try {
-      const targets = pending.filter(entity => !workingIdsRef.current.has(entity.id))
-      if (!targets.length) return toast.info('缺图素材均正在生成中')
-      const results = await Promise.allSettled(
-        targets.map(entity => generate(entity, false, true, false)),
-      )
-      const succeeded = results.filter(result => result.status === 'fulfilled').length
-      await refresh(true)
-      if (succeeded === targets.length) toast.success(`批量生成完成：${succeeded}/${targets.length}`)
-      else toast.error(`批量生成完成：${succeeded} 成功，${targets.length - succeeded} 失败`)
-    } finally {
-      setBatching(false)
-    }
-  }
-
   const upload = async (entity: Entity, file: File) => {
     if (workingIdsRef.current.has(entity.id)) return
     setEntityWorking(entity.id, true)
@@ -199,17 +152,15 @@ export function EntityStep({ kind, bundle, refresh }: Props) {
         <div>
           <div className="label">{config.eyebrow}</div>
           <h3 className="display-type text-2xl font-semibold">{config.title}</h3>
-          <p className="mt-1 max-w-2xl text-sm text-[var(--muted)]">Seedream 5.0 Lite 只返回 Base64，服务端随即写入本地媒体目录；所有版本可回看和切换。</p>
+          <p className="mt-1 max-w-2xl text-sm text-[var(--muted)]">手动上传角色、场景和道具参考图；图片只保存在本地媒体库，所有版本均可回看和切换。</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {kind !== 'scene' && <label className="mr-2 flex items-center gap-2 text-xs text-[var(--muted)]"><input type="checkbox" checked={threeView} disabled={batching} onChange={e => setThreeView(e.target.checked)} /> 三视图设定稿</label>}
-          <button className="btn-secondary" disabled={batching} onClick={() => void batchGenerate()}>{batching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />} 批量补齐图片</button>
-          <button className="btn-primary" disabled={batching} onClick={() => setShowAdd(true)}><Plus className="h-4 w-4" /> 添加{kind === 'character' ? '造型' : kind === 'scene' ? '场景' : '道具'}</button>
+          <button className="btn-primary" onClick={() => setShowAdd(true)}><Plus className="h-4 w-4" /> 添加{kind === 'character' ? '造型' : kind === 'scene' ? '场景' : '道具'}</button>
         </div>
       </section>
 
       {entities.length === 0 ? (
-        <button className="panel flex w-full flex-col items-center border-dashed py-24 text-center hover:border-[var(--projector)]" disabled={batching} onClick={() => setShowAdd(true)}>
+        <button className="panel flex w-full flex-col items-center border-dashed py-24 text-center hover:border-[var(--projector)]" onClick={() => setShowAdd(true)}>
           <ImagePlus className="mb-4 h-10 w-10" style={{ color: config.accent }} />
           <strong>{config.empty}</strong>
           <span className="mt-2 text-sm text-[var(--muted)]">点击添加第一份档案。</span>
@@ -223,7 +174,6 @@ export function EntityStep({ kind, bundle, refresh }: Props) {
               accent={config.accent}
               working={workingIds.has(entity.id)}
               locked={workingIds.has(entity.id)}
-              onGenerate={generate}
               onUpload={upload}
               onSelect={selectVersion}
               onDeleteVersion={deleteVersion}
@@ -261,12 +211,11 @@ export function EntityStep({ kind, bundle, refresh }: Props) {
   )
 }
 
-function EntityCard({ entity, accent, working, locked, onGenerate, onUpload, onSelect, onDeleteVersion, onUpdate, onDelete }: {
+function EntityCard({ entity, accent, working, locked, onUpload, onSelect, onDeleteVersion, onUpdate, onDelete }: {
   entity: Entity
   accent: string
   working: boolean
   locked: boolean
-  onGenerate: (entity: Entity, referenceCurrent?: boolean) => Promise<void>
   onUpload: (entity: Entity, file: File) => Promise<void>
   onSelect: (entity: Entity, imageId: string) => Promise<void>
   onDeleteVersion: (entity: Entity, imageId: string) => Promise<void>
@@ -307,10 +256,8 @@ function EntityCard({ entity, accent, working, locked, onGenerate, onUpload, onS
           </div>
           <textarea className={`mt-3 w-full resize-y rounded-lg border border-transparent bg-[var(--panel-muted)] p-2.5 text-xs leading-5 outline-none focus:border-[var(--projector)] ${entity.kind === 'character' ? 'min-h-36' : 'min-h-24'}`} defaultValue={entity.description} disabled={locked} onBlur={e => { if (e.target.value !== entity.description) void onUpdate(entity, { description: e.target.value }) }} />
           {entity.images.length > 0 && <div className="scrollbar-thin mt-3 flex gap-2 overflow-x-auto pb-1">{entity.images.map((image, index) => <div key={image.id} className="relative h-12 w-12 shrink-0"><button disabled={locked} onClick={() => void onSelect(entity, image.id)} className={`h-full w-full overflow-hidden rounded-lg border-2 ${image.id === entity.selectedImage?.id ? 'border-[var(--projector)]' : 'border-transparent opacity-65 hover:opacity-100'}`}><img src={image.url} alt={`版本 ${index + 1}`} className="h-full w-full object-cover" /></button><button className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-600 text-[10px] text-white shadow" disabled={locked} onClick={() => void onDeleteVersion(entity, image.id)} aria-label={`删除图片版本 ${index + 1}`}>×</button></div>)}</div>}
-          <div className="mt-4 grid grid-cols-2 gap-2">
-            <button className="btn-primary" disabled={locked} onClick={() => void onGenerate(entity, false)}><Sparkles className="h-3.5 w-3.5" /> {entity.selectedImage ? '生成新版本' : '生成图片'}</button>
-            <button className="btn-secondary" disabled={locked || !entity.selectedImage} onClick={() => void onGenerate(entity, true)}><RefreshCw className="h-3.5 w-3.5" /> 参考重绘</button>
-            <button className="btn-secondary col-span-2" disabled={locked} onClick={() => uploadRef.current?.click()}><Upload className="h-3.5 w-3.5" /> 上传本地图</button>
+          <div className="mt-4">
+            <button className="btn-primary w-full" disabled={locked} onClick={() => uploadRef.current?.click()}><Upload className="h-3.5 w-3.5" /> {entity.selectedImage ? '上传新版本' : '上传参考图'}</button>
             <input ref={uploadRef} hidden type="file" accept="image/png,image/jpeg,image/webp" onChange={event => { const file = event.target.files?.[0]; if (file) void onUpload(entity, file); event.target.value = '' }} />
           </div>
         </div>

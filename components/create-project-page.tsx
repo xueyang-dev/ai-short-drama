@@ -120,7 +120,7 @@ export function CreateProjectPage() {
             </div>
             <h1 className="display-type mt-3 text-4xl font-semibold md:text-5xl">建立一座新片场</h1>
             <p className="mt-4 max-w-3xl text-sm leading-7 text-white/60 md:text-base">
-              先确定故事方向与统一画面语言。建立后，DeepSeek 会从专业剧本开始，继续整理角色、场景和道具，再进入分镜与成片。
+              先确定故事方向与统一画面语言。建立后，Local LLM 会从专业剧本开始，继续整理角色、场景和道具，再进入分镜与成片。
             </p>
           </div>
           <div className="relative border-t border-white/10 bg-[var(--navy-soft)] p-6 lg:border-l lg:border-t-0 md:p-8">

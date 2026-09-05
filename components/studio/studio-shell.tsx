@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
-  ArrowLeft, Box, Clapperboard, Image as ImageIcon, Loader2, RefreshCw,
+  Activity, ArrowLeft, Box, Clapperboard, Image as ImageIcon, Loader2, RefreshCw,
   Scissors, ScrollText, Users,
 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -78,7 +78,7 @@ export function StudioShell({ projectId }: { projectId: string }) {
           <div className="absolute bottom-0 left-0 top-0 w-6 film-perforation opacity-60" />
           <div className="ml-6 flex h-full flex-col">
             <div className="border-b border-white/10 px-5 py-5">
-              <div className="timecode mb-3 text-[10px] font-semibold tracking-[.16em] text-[var(--timecode)]">雪风AI短剧工坊</div>
+              <div className="timecode mb-3 text-[10px] font-semibold tracking-[.16em] text-[var(--timecode)]">ARABIC SHORT DRAMA STUDIO</div>
               <Link href="/" className="inline-flex items-center gap-2 text-xs font-semibold text-white/55 hover:text-white"><ArrowLeft className="h-3.5 w-3.5" /> 返回片库</Link>
               <h1 className="display-type mt-4 line-clamp-2 text-2xl font-semibold leading-tight">{bundle.project.title}</h1>
               <div className="timecode mt-2 text-[10px] text-[var(--timecode)]">LOCAL / {bundle.project.ratio} / {bundle.project.genre}</div>
@@ -103,6 +103,7 @@ export function StudioShell({ projectId }: { projectId: string }) {
               })}
             </nav>
             <div className="border-t border-white/10 p-4">
+              <Link href="/providers" className="mb-3 flex cursor-pointer items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-xs text-white/65 transition hover:border-[var(--projector)]/50 hover:text-white"><Activity className="h-3.5 w-3.5" /> Provider 健康状态</Link>
               <div className="flex items-center justify-between text-[10px] text-white/35"><span>本地 SQLite</span><span className="h-1.5 w-1.5 rounded-full bg-[var(--projector)]" /></div>
               <div className="mt-1 text-[10px] text-white/35">无登录 · 无积分 · 无 OSS</div>
             </div>

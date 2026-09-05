@@ -10,6 +10,24 @@ export const H3_PRESET_IDS = [
 export type H3PresetId = (typeof H3_PRESET_IDS)[number]
 export type H3ModelFamily = 'fl2va' | 'ref2va'
 
+export const H3_CHECKPOINTS = [
+  {
+    id: 'MiniMax-H3/minimax_h3_fl2va_pruned_int8_convrot.safetensors',
+    label: 'MiniMax H3 FL2VA INT8',
+    family: 'fl2va' as const,
+  },
+  {
+    id: 'MiniMax-H3/PinkCherry_fl2va_MiniMax_H3_pruned_int8_convrot-beta-0.6.safetensors',
+    label: 'PinkCherry FL2VA beta 0.6',
+    family: 'fl2va' as const,
+  },
+  {
+    id: 'MiniMax-H3/minimax_h3_ref2va_pruned_int8_convrot.safetensors',
+    label: 'MiniMax H3 REF2VA INT8',
+    family: 'ref2va' as const,
+  },
+] as const
+
 export interface H3Preset {
   id: H3PresetId
   label: string
@@ -40,7 +58,7 @@ export const H3_PRESETS: Record<H3PresetId, H3Preset> = {
     steps: 4,
     scheduler: 'beta',
     sampler: 'euler',
-    loraFilename: 'MiniMax-H3/minimax_h3_fl2v_turbo_4step_v1.0_768p_comfyui_bf16.safetensors',
+    loraFilename: 'MiniMax-H3\\minimax_h3_fl2v_turbo_4step_v1.0_768p_comfyui_bf16.safetensors',
   },
   'fl2va-turbo-8': {
     id: 'fl2va-turbo-8',
@@ -50,7 +68,7 @@ export const H3_PRESETS: Record<H3PresetId, H3Preset> = {
     steps: 8,
     scheduler: 'beta',
     sampler: 'euler',
-    loraFilename: 'MiniMax-H3/minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors',
+    loraFilename: 'MiniMax-H3\\minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors',
   },
   ref2va: {
     id: 'ref2va',

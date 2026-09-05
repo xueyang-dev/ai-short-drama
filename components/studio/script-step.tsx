@@ -178,7 +178,7 @@ export function ScriptStep({ bundle, refresh }: Props) {
       })
       setSelectedId(next.episodes[0]?.id ?? null)
       await refresh(true)
-      toast.success(`DeepSeek 已完成第 1–${next.episodes.length} 集剧本与素材档案`)
+      toast.success(`Local LLM 已完成第 1–${next.episodes.length} 集剧本与素材档案`)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '剧本生成失败')
     } finally {
@@ -343,7 +343,7 @@ export function ScriptStep({ bundle, refresh }: Props) {
               <div>
                 <div className="label">Story brief</div>
                 <h3 className="display-type text-2xl font-semibold">创作底稿</h3>
-                <p className="mt-1 text-sm text-[var(--muted)]">DeepSeek 按本次集数分批创作，剧本可继续续写或按指定范围重写。</p>
+                <p className="mt-1 text-sm text-[var(--muted)]">Local LLM 按本次集数分批创作，剧本可继续续写或按指定范围重写。</p>
               </div>
               <button className="btn-secondary" disabled={operationBusy} onClick={() => void saveProject()}><Save className="h-4 w-4" />{saving ? '保存中…' : '保存设定'}</button>
             </div>
@@ -359,7 +359,7 @@ export function ScriptStep({ bundle, refresh }: Props) {
           <div className="flex flex-col justify-between border-t border-[var(--line)] bg-[var(--navy)] p-6 text-white lg:border-l lg:border-t-0">
             <div>
               <div className="timecode text-[10px] text-[var(--timecode)]">TEXT MODEL</div>
-              <div className="mt-2 text-lg font-semibold">DeepSeek V4 Flash · drama-script</div>
+              <div className="mt-2 text-lg font-semibold">Local OpenAI-compatible LLM · drama-script</div>
               <p className="mt-2 text-xs leading-6 text-white/55">本次生成集数决定当前调用输出多少集；计划总集数用于安排全剧情绪曲线，可以留空。</p>
               {bundle.episodes.length > 0 && (
                 <div className="mt-5 rounded-xl border border-white/10 bg-white/5 p-4">

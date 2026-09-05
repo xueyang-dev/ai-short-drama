@@ -1,4 +1,4 @@
 interface:
-  display_name: "Seedance分镜导演"
-  short_description: "把单集剧本拆成可直接用于Seedance 2.0视频生成的专业分镜提示词"
-  default_prompt: "Use $drama-shot-prompt to turn this episode into Seedance-ready shots."
+  display_name: "MiniMax H3分镜导演"
+  short_description: "把单集剧本拆成可直接用于本地MiniMax H3视频生成的专业分镜提示词"
+  default_prompt: "Use $drama-shot-prompt to turn this episode into MiniMax H3-ready shots."
